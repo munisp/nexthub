@@ -13,6 +13,7 @@ import {
   Landmark, AlertTriangle, Scale, Globe, FileText,
   Zap, Database, RefreshCw, GitBranch, CreditCard,
   TrendingUp, Building2, Lock, Eye, Bell,
+  Key, Coins, Heart,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -94,6 +95,34 @@ const navSections: NavSection[] = [
     defaultOpen: false,
     items: [
       { label: "Regulator Management", href: "/admin/regulators", icon: <Users className="h-4 w-4" /> },
+    ],
+  },
+  {
+    title: "Wave 230 — Security",
+    defaultOpen: false,
+    items: [
+      { label: "JWS / HSM / mTLS", href: "/wave230/security", icon: <Key className="h-4 w-4" />, badge: "New", badgeVariant: "default" },
+    ],
+  },
+  {
+    title: "Wave 240 — Workflows",
+    defaultOpen: false,
+    items: [
+      { label: "Temporal Workflows", href: "/wave240/workflows", icon: <GitBranch className="h-4 w-4" />, badge: "New", badgeVariant: "default" },
+    ],
+  },
+  {
+    title: "Wave 250 — Liquidity",
+    defaultOpen: false,
+    items: [
+      { label: "Liquidity Cover", href: "/wave250/liquidity", icon: <Landmark className="h-4 w-4" />, badge: "New", badgeVariant: "default" },
+    ],
+  },
+  {
+    title: "Wave 260 — Domains",
+    defaultOpen: false,
+    items: [
+      { label: "CBDC / G2P / Remittance", href: "/wave260/domains", icon: <Coins className="h-4 w-4" />, badge: "New", badgeVariant: "default" },
     ],
   },
 ];

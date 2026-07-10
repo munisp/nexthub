@@ -23,13 +23,19 @@ import { nexthubReconciliationRouter } from "./routers/nexthubReconciliation";
 import { nexthubDfspsRouter } from "./routers/nexthubDfsps";
 
 // ─── Wave routers (nexthub-owned) ────────────────────────────────────────────
-import { wave221DeveloperRouter } from "./routers/wave221_developer";
+import { wave221Router } from "./routers/wave221_developer";
 import { wave223Router } from "./routers/wave223_onboarding";
 import { wave223ExtRouter } from "./routers/wave223_extensions";
-import { wave224RegulatorRouter } from "./routers/wave224_regulator";
-import { wave225RegulatorAuthRouter } from "./routers/wave225_regulator_auth";
-import { wave226AdminRegulatorsRouter } from "./routers/wave226_admin_regulators";
-import { wave227Router } from "./routers/wave227";
+import { regulatorPortalRouter } from "./routers/wave224_regulator";
+import { regulatorAuthRouter } from "./routers/wave225_regulator_auth";
+import { adminRegulatorsRouter } from "./routers/wave226_admin_regulators";
+import { regulatorDocsRouter } from "./routers/wave227";
+
+// ─── Wave 230–260 routers ─────────────────────────────────────────────────────
+import { wave230Router } from "./routers/wave230_security";
+import { wave240Router } from "./routers/wave240_workflows";
+import { wave250Router } from "./routers/wave250_liquidity";
+import { wave260Router } from "./routers/wave260_domains";
 
 // ─── App Router ───────────────────────────────────────────────────────────────
 export const appRouter = router({
@@ -47,17 +53,29 @@ export const appRouter = router({
   nexthubDfsps: nexthubDfspsRouter,
 
   // Developer portal (hub-side API key management)
-  developerPortal: wave221DeveloperRouter,
+  developerPortal: wave221Router,
 
   // Onboarding
   wave223: wave223Router,
   wave223Ext: wave223ExtRouter,
 
   // Regulator portal
-  regulatorPortal: wave224RegulatorRouter,
-  regulatorAuth: wave225RegulatorAuthRouter,
-  adminRegulators: wave226AdminRegulatorsRouter,
-  regulatorDocs: wave227Router,
+  regulatorPortal: regulatorPortalRouter,
+  regulatorAuth: regulatorAuthRouter,
+  adminRegulators: adminRegulatorsRouter,
+  regulatorDocs: regulatorDocsRouter,
+
+  // Wave 230: JWS non-repudiation, HSM key management, mTLS
+  wave230Security: wave230Router,
+
+  // Wave 240: Temporal workflow orchestration + TigerBeetle ledger tracking
+  wave240Workflows: wave240Router,
+
+  // Wave 250: Liquidity cover management, collateral, settlement corridors
+  wave250Liquidity: wave250Router,
+
+  // Wave 260: CBDC, G2P, Remittance, Healthcare, Audit Trail + Lakehouse
+  wave260Domains: wave260Router,
 });
 
 export type AppRouter = typeof appRouter;

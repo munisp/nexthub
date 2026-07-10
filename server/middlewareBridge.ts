@@ -1699,3 +1699,133 @@ export async function getInsiderRiskScoreViaMiddleware(payload: {
 }): Promise<{ riskScore: number; riskLevel: string; riskFactors: string[] } | null> {
   return safe("POST", "/v1/insider/score", payload);
 }
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// WAVE 230 — JWS / HSM / mTLS
+// ═══════════════════════════════════════════════════════════════════════════════
+export async function generateJwsKeyViaMiddleware(payload: {
+  dfspId: string; algorithm: "PS256" | "RS256" | "ES256";
+}): Promise<{ keyId: string; publicKey: string } | null> {
+  return safe("POST", "/v1/hsm/keys/generate", payload);
+}
+export async function rotateJwsKeyViaMiddleware(payload: {
+  dfspId: string;
+}): Promise<{ newKeyId: string; oldKeyId: string } | null> {
+  return safe("POST", "/v1/hsm/keys/rotate", payload);
+}
+export async function signJwsPayloadViaMiddleware(payload: {
+  dfspId: string; body: string;
+}): Promise<{ signature: string; keyId: string } | null> {
+  return safe("POST", "/v1/hsm/jws/sign", payload);
+}
+export async function verifyJwsPayloadViaMiddleware(payload: {
+  dfspId: string; body: string; signature: string;
+}): Promise<{ valid: boolean; keyId: string } | null> {
+  return safe("POST", "/v1/hsm/jws/verify", payload);
+}
+export async function issueMtlsCertViaMiddleware(payload: {
+  dfspId: string; commonName: string;
+}): Promise<{ certId: string; certificate: string; privateKey: string } | null> {
+  return safe("POST", "/v1/mtls/certs/issue", payload);
+}
+export async function revokeMtlsCertViaMiddleware(payload: {
+  certId: string; reason: string;
+}): Promise<{ revoked: boolean } | null> {
+  return safe("POST", "/v1/mtls/certs/revoke", payload);
+}
+
+// WAVE 250 — LIQUIDITY COVER MANAGEMENT
+// ═══════════════════════════════════════════════════════════════════════════════
+export async function initiateCollateralDepositViaMiddleware(payload: {
+  dfspId: string; amountKobo: number; currency?: string;
+}): Promise<{ depositId: string; workflowId: string } | null> {
+  return safe("POST", "/v1/liquidity/collateral/deposit", payload);
+}
+export async function updateNdcLimitViaMiddleware(payload: {
+  dfspId: string; ndcLimitKobo: number; alertThresholdPct?: number;
+}): Promise<{ updated: boolean } | null> {
+  return safe("POST", "/v1/liquidity/ndc/update", payload);
+}
+export async function getLiquidityPositionViaMiddleware(
+  dfspId: string
+): Promise<{ dfspId: string; collateralKobo: number; ndcLimitKobo: number; utilizationPct: number } | null> {
+  return safe("GET", `/v1/liquidity/position/${encodeURIComponent(dfspId)}`);
+}
+export async function upsertCorridorViaMiddleware(payload: {
+  corridorId: string; sourceCurrency: string; targetCurrency: string; fxRate: number;
+}): Promise<{ saved: boolean } | null> {
+  return safe("POST", "/v1/liquidity/corridors/upsert", payload);
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// WAVE 260 — CBDC
+// ═══════════════════════════════════════════════════════════════════════════════
+export async function createCbdcAccountViaMiddleware(payload: {
+  ownerId: string; ownerType?: string; currency?: string;
+}): Promise<{ walletId: string; accountId: string } | null> {
+  return safe("POST", "/v1/cbdc/accounts/create", payload);
+}
+export async function cbdcTransferViaMiddleware(payload: {
+  senderWallet: string; receiverWallet: string; amount: number; currency?: string;
+}): Promise<{ transferId: string; status: string } | null> {
+  return safe("POST", "/v1/cbdc/transfers", payload);
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// WAVE 260 — G2P DISBURSEMENTS
+// ═══════════════════════════════════════════════════════════════════════════════
+export async function createG2pBatchViaMiddleware(payload: {
+  programType: string; programId: string; payerFsp: string; payerAccount: string;
+  beneficiaryCount: number; totalAmount: number; amount: number;
+}): Promise<{ batchId: string; workflowId: string } | null> {
+  return safe("POST", "/v1/g2p/batches/create", payload);
+}
+export async function processG2pBatchViaMiddleware(payload: {
+  batchId: string;
+}): Promise<{ started: boolean; workflowId: string } | null> {
+  return safe("POST", "/v1/g2p/batches/process", payload);
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// WAVE 260 — HEALTHCARE CLAIMS
+// ═══════════════════════════════════════════════════════════════════════════════
+export async function submitHealthcareClaimViaMiddleware(payload: {
+  policyNumber: string; beneficiaryId: string; beneficiaryName: string;
+  providerId: string; providerName: string; claimType: string;
+  claimAmount: number; serviceDate: string;
+}): Promise<{ claimId: string; status: string } | null> {
+  return safe("POST", "/v1/healthcare/claims/submit", payload);
+}
+export async function processHealthcareClaimViaMiddleware(payload: {
+  claimId: string; decision: "APPROVED" | "REJECTED"; approvedAmount?: number; notes?: string;
+}): Promise<{ processed: boolean; status: string } | null> {
+  return safe("POST", "/v1/healthcare/claims/process", payload);
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// WAVE 260 — LAKEHOUSE AUDIT TRAIL
+// ═══════════════════════════════════════════════════════════════════════════════
+export async function writeAuditEventViaMiddleware(payload: {
+  eventType: string; actorId: string; actorType: string;
+  resourceType: string; resourceId: string; action: string;
+  outcome: "SUCCESS" | "FAILURE"; metadata?: unknown;
+}): Promise<{ written: boolean; eventId: string } | null> {
+  return safe("POST", "/v1/audit/events", payload);
+}
+export async function queryAuditEventsViaMiddleware(params: {
+  actorId?: string; resourceType?: string; eventType?: string;
+  from?: string; to?: string; limit?: number; offset?: number;
+}): Promise<{ events: unknown[]; total: number } | null> {
+  const qs = new URLSearchParams(
+    Object.entries(params).filter(([, v]) => v != null).map(([k, v]) => [k, String(v)])
+  ).toString();
+  return safe("GET", `/v1/audit/events?${qs}`);
+}
+export async function getLakehouseReportViaMiddleware(params: {
+  reportType: string; from: string; to: string; dfspId?: string;
+}): Promise<{ report: unknown } | null> {
+  const qs = new URLSearchParams(
+    Object.entries(params).filter(([, v]) => v != null).map(([k, v]) => [k, String(v)])
+  ).toString();
+  return safe("GET", `/v1/lakehouse/reports?${qs}`);
+}

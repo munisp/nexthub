@@ -58,6 +58,11 @@ const RegulatorLogin         = lazy(() => import("@/pages/regulator/RegulatorLog
 const RegulatorVerify        = lazy(() => import("@/pages/regulator/RegulatorVerify"));
 const RegulatorDashboard     = lazy(() => import("@/pages/regulator/RegulatorDashboard"));
 const RegulatorManagement    = lazy(() => import("@/pages/admin/RegulatorManagement"));
+// ─── Wave 230–260 pages ───────────────────────────────────────────────────────
+const Wave230Security        = lazy(() => import("@/pages/nexthub/Wave230Security"));
+const Wave240Workflows       = lazy(() => import("@/pages/nexthub/Wave240Workflows"));
+const Wave250Liquidity       = lazy(() => import("@/pages/nexthub/Wave250Liquidity"));
+const Wave260Domains         = lazy(() => import("@/pages/nexthub/Wave260Domains"));
 
 // ─── tRPC + React Query setup ─────────────────────────────────────────────────
 const queryClient = new QueryClient({
@@ -146,6 +151,12 @@ function AppRoutes() {
 
               {/* Admin */}
               <Route path="/admin/regulators" component={RegulatorManagement} />
+
+              {/* Wave 230–260 */}
+              <Route path="/wave230/security" component={Wave230Security} />
+              <Route path="/wave240/workflows" component={Wave240Workflows} />
+              <Route path="/wave250/liquidity" component={Wave250Liquidity} />
+              <Route path="/wave260/domains" component={Wave260Domains} />
 
               {/* 404 fallback */}
               <Route component={() => (

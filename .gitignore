@@ -1,0 +1,48 @@
+# Dependencies
+node_modules/
+.pnpm-store/
+
+# Build outputs
+dist/
+build/
+target/
+
+# Environment
+.env
+.env.local
+.env.*.local
+
+# Logs
+*.log
+logs/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Editor
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Go build artifacts
+services/bridge/bridge
+services/bridge/*.test
+
+# Rust build artifacts
+services/ledger/target/
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/
+
+# TigerBeetle data
+services/ledger/data/
+
+# Temporal
+temporal_data/
+services/ledger/target/

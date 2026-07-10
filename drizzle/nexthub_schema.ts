@@ -1024,3 +1024,122 @@ export const dfspNdcLimits = pgTable("dfsp_ndc_limits", {
   alertThresholdPct: real("alert_threshold_pct").notNull().default(80),
   updatedAt: timestamp("updated_at").defaultNow(),
 });
+
+// ─── Re-exports from paygate schema (shared tables used by nexthub routers) ──
+// These tables live in the paygate schema but are referenced by nexthub server
+// code. Re-exporting them here keeps the import path consistent.
+export {
+  fxRates,
+  kybDocuments,
+  kybVerifications,
+  posTerminals,
+  realtimeNotificationPreferences,
+  transactions,
+} from "./schema";
+
+// ── Wave 230: JWS Keys + mTLS Certificates ───────────────────────────────────
+export const jwsKeys = pgTable("jws_keys", {
+  id: text("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  dfspId: text("dfsp_id").notNull(),
+  algorithm: text("algorithm").notNull().default("PS256"),
+  keyType: text("key_type").notNull().default("RSA"),
+  publicKeyPem: text("public_key_pem").notNull(),
+  privateKeyPem: text("private_key_pem"),
+  isActive: boolean("is_active").notNull().default(true),
+  createdAt: timestamp("created_at").defaultNow(),
+  expiresAt: timestamp("expires_at"),
+  revokedAt: timestamp("revoked_at"),
+  revokedBy: text("revoked_by"),
+});
+export type JwsKey = typeof jwsKeys.$inferSelect;
+
+export const mtlsCertificates = pgTable("mtls_certificates", {
+  id: text("id").primaryKey(),
+  dfspId: text("dfsp_id").notNull(),
+  certType: text("cert_type").notNull(),
+  commonName: text("common_name").notNull(),
+  certificatePem: text("certificate_pem").notNull(),
+  privateKeyPem: text("private_key_pem"),
+  serialNumber: text("serial_number"),
+  issuedAt: timestamp("issued_at").notNull(),
+  expiresAt: timestamp("expires_at").notNull(),
+  status: text("status").notNull().default("ACTIVE"),
+  revokedAt: timestamp("revoked_at"),
+  revocationReason: text("revocation_reason"),
+});
+export type MtlsCertificate = typeof mtlsCertificates.$inferSelect;
+
+// ── Wave 240: Temporal Workflow Tracking ─────────────────────────────────────
+export const temporalWorkflowInstances = pgTable("temporal_workflow_instances", {
+  id: text("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  workflowId: text("workflow_id").notNull().unique(),
+  runId: text("run_id"),
+  workflowType: text("workflow_type").notNull(),
+  status: text("status").notNull().default("RUNNING"),
+  input: text("input"),
+  result: text("result"),
+  errorMessage: text("error_message"),
+  startedAt: timestamp("started_at").defaultNow(),
+  completedAt: timestamp("completed_at"),
+  entityId: text("entity_id"),
+  entityType: text("entity_type"),
+});
+export type TemporalWorkflowInstance = typeof temporalWorkflowInstances.$inferSelect;
+
+// ── Wave 250: Liquidity & Collateral ─────────────────────────────────────────
+export const collateralDeposits = pgTable("collateral_deposits", {
+  id: text("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  dfspId: text("dfsp_id").notNull(),
+  amountKobo: integer("amount_kobo").notNull(),
+  currency: text("currency").notNull().default("NGN"),
+  bankRef: text("bank_ref"),
+  status: text("status").notNull().default("PENDING"),
+  ledgerEntryId: text("ledger_entry_id"),
+  workflowId: text("workflow_id"),
+  confirmedAt: timestamp("confirmed_at"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+export type CollateralDeposit = typeof collateralDeposits.$inferSelect;
+
+export const liquidityAlerts = pgTable("liquidity_alerts", {
+  id: text("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  dfspId: text("dfsp_id").notNull(),
+  currency: text("currency").notNull().default("NGN"),
+  positionKobo: integer("position_kobo").notNull(),
+  ndcLimitKobo: integer("ndc_limit_kobo").notNull(),
+  utilisationPct: real("utilisation_pct").notNull(),
+  alertLevel: text("alert_level").notNull(),
+  resolvedAt: timestamp("resolved_at"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+export type LiquidityAlert = typeof liquidityAlerts.$inferSelect;
+
+export const settlementCorridors = pgTable("settlement_corridors", {
+  id: text("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  corridorId: text("corridor_id").notNull().unique(),
+  sourceCurrency: text("source_currency").notNull(),
+  targetCurrency: text("target_currency").notNull(),
+  fxRate: real("fx_rate").notNull().default(1),
+  status: text("status").notNull().default("ACTIVE"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+export type SettlementCorridor = typeof settlementCorridors.$inferSelect;
+
+// ── Wave 260: Audit Trail (Lakehouse sync) ────────────────────────────────────
+export const auditTrailEvents = pgTable("audit_trail_events", {
+  id: text("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  eventType: text("event_type").notNull(),
+  actorId: text("actor_id").notNull(),
+  actorType: text("actor_type").notNull(),
+  resourceType: text("resource_type").notNull(),
+  resourceId: text("resource_id").notNull(),
+  action: text("action").notNull(),
+  outcome: text("outcome").notNull(),
+  metadata: text("metadata"),
+  ipAddress: text("ip_address"),
+  sessionId: text("session_id"),
+  lakehouseSynced: boolean("lakehouse_synced").notNull().default(false),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+export type AuditTrailEvent = typeof auditTrailEvents.$inferSelect;

@@ -29,7 +29,7 @@ import { wave223ExtRouter } from "./routers/wave223_extensions";
 import { regulatorPortalRouter } from "./routers/wave224_regulator";
 import { regulatorAuthRouter } from "./routers/wave225_regulator_auth";
 import { adminRegulatorsRouter } from "./routers/wave226_admin_regulators";
-import { regulatorDocsRouter } from "./routers/wave227";
+import { regulatorDocsRouter, ndcBreachRouter } from "./routers/wave227";
 
 // ─── Wave 230–260 routers ─────────────────────────────────────────────────────
 import { wave230Router } from "./routers/wave230_security";
@@ -64,6 +64,7 @@ export const appRouter = router({
   regulatorAuth: regulatorAuthRouter,
   adminRegulators: adminRegulatorsRouter,
   regulatorDocs: regulatorDocsRouter,
+  ndcBreach: ndcBreachRouter,
 
   // Wave 230: JWS non-repudiation, HSM key management, mTLS
   wave230Security: wave230Router,

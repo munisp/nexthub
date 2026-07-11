@@ -2003,3 +2003,152 @@ export async function batchGetParticipantTbBalancesViaMiddleware(payload: {
 }): Promise<Array<{ tbAccountId: string; balance: number; creditsPending: number; debitsPending: number }> | null> {
   return safe("POST", "/nexthub/ledger/batch-balances", payload);
 }
+
+// ─── APISIX Admin API ─────────────────────────────────────────────────────────
+
+/** Creates or updates a route in the APISIX Admin API */
+export async function upsertApisixRouteViaMiddleware(route: {
+  routeId: string;
+  name: string;
+  uri: string;
+  methods?: string[];
+  upstreamUrl: string;
+  plugins?: Record<string, unknown>;
+}): Promise<{ upserted: boolean; routeId: string } | null> {
+  return safe("PUT", "/v1/apisix/routes", route);
+}
+
+/** Creates or updates a consumer in the APISIX Admin API */
+export async function upsertApisixConsumerViaMiddleware(consumer: {
+  username: string;
+  plugins?: Record<string, unknown>;
+}): Promise<{ upserted: boolean; username: string } | null> {
+  return safe("PUT", "/v1/apisix/consumers", consumer);
+}
+
+/** Removes a route from the APISIX Admin API */
+export async function deleteApisixRouteViaMiddleware(
+  routeId: string,
+): Promise<{ deleted: boolean; routeId: string } | null> {
+  return safe("DELETE", `/v1/apisix/routes/${routeId}`, {});
+}
+
+// ─── Dapr State Store & Pub/Sub ───────────────────────────────────────────────
+
+/** Saves a value to the Dapr state store */
+export async function daprSetStateViaMiddleware(params: {
+  key: string;
+  value: unknown;
+  component?: string;
+  ttlSeconds?: number;
+}): Promise<{ saved: boolean; key: string } | null> {
+  return safe("POST", "/v1/dapr/state", params);
+}
+
+/** Retrieves a value from the Dapr state store */
+export async function daprGetStateViaMiddleware(
+  key: string,
+  component?: string,
+): Promise<{ found: boolean; key: string; value: unknown } | null> {
+  const qs = component ? `?component=${component}` : "";
+  return safe("GET", `/v1/dapr/state/${encodeURIComponent(key)}${qs}`, {});
+}
+
+/** Publishes an event to a Dapr pub/sub topic */
+export async function daprPublishViaMiddleware(params: {
+  topic: string;
+  data: unknown;
+  pubsubComponent?: string;
+  eventType?: string;
+  traceId?: string;
+}): Promise<{ published: boolean; topic: string } | null> {
+  return safe("POST", "/v1/dapr/publish", params);
+}
+
+// ─── OpenAppSec WAF ───────────────────────────────────────────────────────────
+
+/** Creates or updates a WAF policy in OpenAppSec */
+export async function upsertOpenappsecPolicyViaMiddleware(policy: {
+  policyId: string;
+  name: string;
+  mode?: string;
+  assetUrls?: string[];
+  practiceConfig?: unknown;
+}): Promise<{ upserted: boolean; policyId: string } | null> {
+  return safe("PUT", "/v1/openappsec/policies", policy);
+}
+
+/** Retrieves WAF alerts from OpenAppSec */
+export async function getOpenappsecAlertsViaMiddleware(params?: {
+  severity?: string;
+  from?: string;
+  to?: string;
+  limit?: number;
+}): Promise<{ alerts: unknown[]; total: number } | null> {
+  const qs = params
+    ? "?" + Object.entries(params).filter(([, v]) => v !== undefined).map(([k, v]) => `${k}=${encodeURIComponent(String(v))}`).join("&")
+    : "";
+  return safe("GET", `/v1/openappsec/alerts${qs}`, {});
+}
+
+// ─── Keycloak User Provisioning ───────────────────────────────────────────────
+
+/** Provisions a user in Keycloak and assigns roles */
+export async function provisionKeycloakUserViaMiddleware(params: {
+  username: string;
+  email?: string;
+  firstName?: string;
+  lastName?: string;
+  roles?: string[];
+  linkedEntityType?: string;
+  linkedEntityId?: string;
+  tempPassword?: string;
+}): Promise<{ provisioned: boolean; keycloakUserId: string; username: string } | null> {
+  return safe("POST", "/v1/keycloak/provision", params);
+}
+
+// ─── Kafka Direct Publish ─────────────────────────────────────────────────────
+
+/** Publishes a message directly to a Kafka topic via the Go bridge */
+export async function kafkaDirectPublishViaMiddleware(params: {
+  topic: string;
+  key: string;
+  value: unknown;
+}): Promise<{ eventId: string; status: string } | null> {
+  return safe("POST", "/v1/kafka/publish", params);
+}
+
+// ─── Temporal Workflow Proxy ──────────────────────────────────────────────────
+
+/** Starts a Temporal workflow via the Go bridge proxy */
+export async function temporalStartWorkflowViaMiddleware(params: {
+  workflowType: string;
+  workflowId: string;
+  taskQueue: string;
+  input?: unknown;
+  executionTimeout?: number;
+}): Promise<{ runId: string; workflowId: string; status: string } | null> {
+  return safe("POST", "/v1/temporal/workflows", params);
+}
+
+/** Gets the status of a Temporal workflow */
+export async function temporalGetWorkflowStatusViaMiddleware(
+  workflowId: string,
+): Promise<{ status: string; startTime: string; workflowId: string } | null> {
+  return safe("GET", `/v1/temporal/workflows/${encodeURIComponent(workflowId)}`, {});
+}
+
+/** Sends a signal to a running Temporal workflow */
+export async function temporalSignalWorkflowViaMiddleware(
+  workflowId: string,
+  params: { signalName: string; input?: unknown },
+): Promise<{ signaled: boolean; workflowId: string } | null> {
+  return safe("POST", `/v1/temporal/workflows/${encodeURIComponent(workflowId)}/signal`, params);
+}
+
+/** Cancels a running Temporal workflow */
+export async function temporalCancelWorkflowViaMiddleware(
+  workflowId: string,
+): Promise<{ cancelled: boolean; workflowId: string } | null> {
+  return safe("POST", `/v1/temporal/workflows/${encodeURIComponent(workflowId)}/cancel`, {});
+}

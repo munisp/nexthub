@@ -11,6 +11,7 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/munisp/nexthub/bridge/internal/kafka"
+	"github.com/munisp/nexthub/bridge/internal/keycloak"
 	"github.com/munisp/nexthub/bridge/internal/ledger"
 	"github.com/munisp/nexthub/bridge/internal/permify"
 	"github.com/munisp/nexthub/bridge/internal/workflows"
@@ -22,6 +23,7 @@ type Handler struct {
 	Ledger    *ledger.Client
 	Kafka     *kafka.Producer
 	Permify   *permify.Client
+	Keycloak  *keycloak.Client
 	Log       *zap.Logger
 }
 

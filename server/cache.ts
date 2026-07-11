@@ -42,6 +42,23 @@ export const TTL = {
   liquidity: 30,
   "rtgs:submissions": 60,
   SHORT: 30,
+  // NextHub domain-specific TTLs
+  NEXTHUB_DFSP: 120,
+  NEXTHUB_ORACLES: 300,
+  NEXTHUB_BILLING: 60,
+  NEXTHUB_DISPUTES: 60,
+  NEXTHUB_PISP: 120,
+  NEXTHUB_BULK: 60,
+  NEXTHUB_CBDC: 60,
+  NEXTHUB_G2P: 120,
+  NEXTHUB_REMITTANCE: 120,
+  NEXTHUB_HEALTHCARE: 120,
+  NEXTHUB_SECURITY: 30,
+  NEXTHUB_RECONCILIATION: 60,
+  NEXTHUB_WORKFLOWS: 60,
+  PERMIFY_CHECK: 30,
+  KEYCLOAK_TOKEN: 300,
+  APISIX_ROUTES: 300,
 } as const;
 
 // ─── Cache namespace keys ─────────────────────────────────────────────────────
@@ -59,7 +76,23 @@ export type CacheNamespace =
   | "dispute:ml"
   | "identity"
   | "liquidity"
-  | "rtgs:submissions";
+  | "rtgs:submissions"
+  | "nexthub:dfsp"
+  | "nexthub:oracles"
+  | "nexthub:billing"
+  | "nexthub:disputes"
+  | "nexthub:pisp"
+  | "nexthub:bulk"
+  | "nexthub:cbdc"
+  | "nexthub:g2p"
+  | "nexthub:remittance"
+  | "nexthub:healthcare"
+  | "nexthub:security"
+  | "nexthub:reconciliation"
+  | "nexthub:workflows"
+  | "permify:check"
+  | "keycloak:token"
+  | "apisix:routes";
 
 // ─── Cache interface ──────────────────────────────────────────────────────────
 interface CacheStore {

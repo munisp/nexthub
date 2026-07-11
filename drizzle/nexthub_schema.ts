@@ -1146,3 +1146,180 @@ export const auditTrailEvents = pgTable("audit_trail_events", {
   createdAt: timestamp("created_at").defaultNow(),
 });
 export type AuditTrailEvent = typeof auditTrailEvents.$inferSelect;
+
+// ── Infrastructure: APISIX Gateway Route Registry ────────────────────────────
+export const apisixRoutes = pgTable("apisix_routes", {
+  id: text("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  routeId: text("route_id").notNull().unique(),
+  dfspId: text("dfsp_id"),
+  name: text("name").notNull(),
+  uri: text("uri").notNull(),
+  methods: text("methods").array().notNull().default(["GET", "POST"]),
+  upstreamUrl: text("upstream_url").notNull(),
+  plugins: text("plugins"),
+  status: text("status").notNull().default("ACTIVE"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+export type ApisixRoute = typeof apisixRoutes.$inferSelect;
+
+export const apisixConsumers = pgTable("apisix_consumers", {
+  id: text("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  username: text("username").notNull().unique(),
+  dfspId: text("dfsp_id"),
+  plugins: text("plugins"),
+  status: text("status").notNull().default("ACTIVE"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+export type ApisixConsumer = typeof apisixConsumers.$inferSelect;
+
+// ── Infrastructure: Dapr State & Pub/Sub Audit ────────────────────────────────
+export const daprStateEntries = pgTable("dapr_state_entries", {
+  id: text("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  storeComponent: text("store_component").notNull().default("statestore"),
+  stateKey: text("state_key").notNull(),
+  etag: text("etag"),
+  value: text("value"),
+  ttlSeconds: integer("ttl_seconds"),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+export type DaprStateEntry = typeof daprStateEntries.$inferSelect;
+
+export const daprPubSubEvents = pgTable("dapr_pubsub_events", {
+  id: text("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  pubsubComponent: text("pubsub_component").notNull().default("pubsub"),
+  topic: text("topic").notNull(),
+  eventType: text("event_type").notNull(),
+  dataContentType: text("data_content_type").notNull().default("application/json"),
+  data: text("data"),
+  traceId: text("trace_id"),
+  status: text("status").notNull().default("PUBLISHED"),
+  publishedAt: timestamp("published_at").defaultNow(),
+});
+export type DaprPubSubEvent = typeof daprPubSubEvents.$inferSelect;
+
+// ── Infrastructure: OpenAppSec WAF Policies & Alerts ─────────────────────────
+export const openappsecPolicies = pgTable("openappsec_policies", {
+  id: text("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  policyId: text("policy_id").notNull().unique(),
+  name: text("name").notNull(),
+  mode: text("mode").notNull().default("prevent"),
+  assetUrls: text("asset_urls").array().notNull().default([]),
+  practiceConfig: text("practice_config"),
+  trustedSources: text("trusted_sources"),
+  status: text("status").notNull().default("ACTIVE"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+export type OpenappsecPolicy = typeof openappsecPolicies.$inferSelect;
+
+export const openappsecAlerts = pgTable("openappsec_alerts", {
+  id: text("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  alertId: text("alert_id").notNull().unique(),
+  policyId: text("policy_id"),
+  severity: text("severity").notNull().default("medium"),
+  attackType: text("attack_type").notNull(),
+  sourceIp: text("source_ip"),
+  targetUri: text("target_uri"),
+  requestId: text("request_id"),
+  payload: text("payload"),
+  action: text("action").notNull().default("blocked"),
+  resolvedAt: timestamp("resolved_at"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+export type OpenappsecAlert = typeof openappsecAlerts.$inferSelect;
+
+// ── Infrastructure: Fluvio Stream Topic Registry ──────────────────────────────
+export const fluvioTopics = pgTable("fluvio_topics", {
+  id: text("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  topicName: text("topic_name").notNull().unique(),
+  partitions: integer("partitions").notNull().default(1),
+  retentionHours: integer("retention_hours").notNull().default(24),
+  description: text("description"),
+  status: text("status").notNull().default("ACTIVE"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+export type FluvioTopic = typeof fluvioTopics.$inferSelect;
+
+export const fluvioStreamEvents = pgTable("fluvio_stream_events", {
+  id: text("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  topic: text("topic").notNull(),
+  partitionKey: text("partition_key"),
+  payload: text("payload").notNull(),
+  offset: integer("offset"),
+  status: text("status").notNull().default("PUBLISHED"),
+  publishedAt: timestamp("published_at").defaultNow(),
+});
+export type FluvioStreamEvent = typeof fluvioStreamEvents.$inferSelect;
+
+// ── Infrastructure: Permify Policy Relationship Audit ─────────────────────────
+export const permifyRelationships = pgTable("permify_relationships", {
+  id: text("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  tenantId: text("tenant_id").notNull(),
+  entityType: text("entity_type").notNull(),
+  entityId: text("entity_id").notNull(),
+  relation: text("relation").notNull(),
+  subjectType: text("subject_type").notNull(),
+  subjectId: text("subject_id").notNull(),
+  snapToken: text("snap_token"),
+  operation: text("operation").notNull().default("WRITE"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+export type PermifyRelationship = typeof permifyRelationships.$inferSelect;
+
+export const permifyPermissionChecks = pgTable("permify_permission_checks", {
+  id: text("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  tenantId: text("tenant_id").notNull(),
+  subjectType: text("subject_type").notNull(),
+  subjectId: text("subject_id").notNull(),
+  permission: text("permission").notNull(),
+  resourceType: text("resource_type").notNull(),
+  resourceId: text("resource_id").notNull(),
+  allowed: boolean("allowed").notNull(),
+  reason: text("reason"),
+  checkedAt: timestamp("checked_at").defaultNow(),
+});
+export type PermifyPermissionCheck = typeof permifyPermissionChecks.$inferSelect;
+
+// ── Infrastructure: Keycloak User Provisioning Audit ─────────────────────────
+export const keycloakProvisioningLog = pgTable("keycloak_provisioning_log", {
+  id: text("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  keycloakUserId: text("keycloak_user_id"),
+  username: text("username").notNull(),
+  email: text("email"),
+  realm: text("realm").notNull().default("nexthub"),
+  roles: text("roles").array().notNull().default([]),
+  linkedEntityType: text("linked_entity_type"),
+  linkedEntityId: text("linked_entity_id"),
+  operation: text("operation").notNull().default("CREATE"),
+  status: text("status").notNull().default("SUCCESS"),
+  errorMessage: text("error_message"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+export type KeycloakProvisioningLog = typeof keycloakProvisioningLog.$inferSelect;
+
+// ── Infrastructure: Lakehouse Sync Queue ──────────────────────────────────────
+export const lakehouseSyncQueue = pgTable("lakehouse_sync_queue", {
+  id: text("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  eventType: text("event_type").notNull(),
+  sourceTable: text("source_table").notNull(),
+  sourceId: text("source_id").notNull(),
+  payload: text("payload").notNull(),
+  retries: integer("retries").notNull().default(0),
+  status: text("status").notNull().default("PENDING"),
+  syncedAt: timestamp("synced_at"),
+  errorMessage: text("error_message"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+export type LakehouseSyncQueue = typeof lakehouseSyncQueue.$inferSelect;
+
+// ── Infrastructure: Redis Cache Invalidation Log ──────────────────────────────
+export const redisCacheInvalidations = pgTable("redis_cache_invalidations", {
+  id: text("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  namespace: text("namespace").notNull(),
+  cacheKey: text("cache_key").notNull(),
+  reason: text("reason"),
+  invalidatedBy: text("invalidated_by"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+export type RedisCacheInvalidation = typeof redisCacheInvalidations.$inferSelect;

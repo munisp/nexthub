@@ -20,6 +20,7 @@ import (
 	"github.com/munisp/nexthub/bridge/internal/config"
 	"github.com/munisp/nexthub/bridge/internal/handlers"
 	"github.com/munisp/nexthub/bridge/internal/kafka"
+	"github.com/munisp/nexthub/bridge/internal/keycloak"
 	"github.com/munisp/nexthub/bridge/internal/ledger"
 	bMiddleware "github.com/munisp/nexthub/bridge/internal/middleware"
 	"github.com/munisp/nexthub/bridge/internal/permify"
@@ -60,12 +61,20 @@ func main() {
 		}
 	}
 
+	// ── Keycloak client ──────────────────────────────────────────────────────
+	keycloakClient := keycloak.NewClient(
+		cfg.KeycloakURL, cfg.KeycloakRealm,
+		cfg.KeycloakClientID, cfg.KeycloakSecret,
+		cfg.JWTSecret,
+	)
+
 	// ── HTTP handlers ─────────────────────────────────────────────────────────
 	h := &handlers.Handler{
-		Ledger:  ledgerClient,
-		Kafka:   kafkaProducer,
-		Permify: permifyClient,
-		Log:     log,
+		Ledger:   ledgerClient,
+		Kafka:    kafkaProducer,
+		Permify:  permifyClient,
+		Keycloak: keycloakClient,
+		Log:      log,
 	}
 	if worker != nil {
 		h.Temporal = worker.Client
@@ -148,6 +157,44 @@ func main() {
 		// Balance queries
 		nexthub.POST("/ledger/account-balance",        h.GetAccountBalance)
 		nexthub.POST("/ledger/batch-balances",         h.BatchGetAccountBalances)
+	}
+
+	// ── Infrastructure routes (APISIX, Dapr, Fluvio, Permify, Lakehouse, WAF, Keycloak) ──
+	infra := r.Group("/v1", bMiddleware.InternalKeyAuth(cfg.InternalKey))
+	{
+		// APISIX Admin
+		infra.PUT("/apisix/routes",                 h.UpsertApisixRoute)
+		infra.PUT("/apisix/consumers",              h.UpsertApisixConsumer)
+		infra.DELETE("/apisix/routes/:routeId",     h.DeleteApisixRoute)
+		// Dapr
+		infra.POST("/dapr/state",                   h.DaprSetState)
+		infra.GET("/dapr/state/:key",               h.DaprGetState)
+		infra.POST("/dapr/publish",                 h.DaprPublish)
+		// Fluvio
+		infra.POST("/fluvio/produce",               h.FluvioProduce)
+		infra.POST("/fluvio/topics",                h.FluvioCreateTopic)
+		infra.GET("/fluvio/topics/:topic/stats",    h.FluvioTopicStats)
+		// Permify PBAC
+		infra.POST("/permify/check",                h.PermifyCheck)
+		infra.POST("/permify/relationships/write",  h.PermifyWriteRelationship)
+		infra.POST("/permify/relationships/delete", h.PermifyDeleteRelationship)
+		infra.POST("/permify/expand",               h.PermifyExpandPermissions)
+		// Lakehouse
+		infra.POST("/lakehouse/events",             h.WriteLakehouseEvent)
+		infra.POST("/lakehouse/query",              h.QueryLakehouseCompliance)
+		infra.GET("/lakehouse/reports",             h.GetLakehouseReport)
+		// OpenAppSec WAF
+		infra.PUT("/openappsec/policies",           h.UpsertOpenappsecPolicy)
+		infra.GET("/openappsec/alerts",             h.GetOpenappsecAlerts)
+		// Keycloak
+		infra.POST("/keycloak/provision",           h.KeycloakProvisionUser)
+		// Kafka direct
+		infra.POST("/kafka/publish",                h.KafkaPublish)
+		// Temporal proxy
+		infra.POST("/temporal/workflows",                      h.TemporalStartWorkflow)
+		infra.GET("/temporal/workflows/:workflowId",           h.TemporalGetWorkflowStatus)
+		infra.POST("/temporal/workflows/:workflowId/signal",   h.TemporalSignalWorkflow)
+		infra.POST("/temporal/workflows/:workflowId/cancel",   h.TemporalCancelWorkflow)
 	}
 
 	// ── HTTP server ───────────────────────────────────────────────────────────

@@ -32,6 +32,19 @@ import {
 } from "../drizzle/schema";
 import { ENV } from "./_core/env";
 import * as schema from "../drizzle/schema";
+import * as nexthubSchema from "../drizzle/nexthub_schema";
+import * as nqrSchema from "../drizzle/nqr_schema";
+import * as tenantSchema from "../drizzle/tenant_schema";
+import * as nationalSwitchSchema from "../drizzle/national_switch_schema";
+
+// Merged schema for Drizzle relational queries (db.query.*)
+export const allSchemas = {
+  ...schema,
+  ...nexthubSchema,
+  ...nqrSchema,
+  ...tenantSchema,
+  ...nationalSwitchSchema,
+};
 export { schema };
 
 // ─── DB singleton ─────────────────────────────────────────────────────────────
@@ -62,7 +75,7 @@ export async function getDb() {
         connectionTimeoutMillis: 5_000,
         allowExitOnIdle: false,
       });
-      _db = drizzle(_pool);
+      _db = drizzle(_pool, { schema: allSchemas });
       // Apply all performance indexes on startup (idempotent — IF NOT EXISTS)
       try {
         for (const sql of PERFORMANCE_INDEXES) {

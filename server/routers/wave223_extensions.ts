@@ -12,17 +12,19 @@ import { db } from "../db";
 import { sql, eq, desc, and, gte, lte } from "drizzle-orm";
 import {
   auditLogs,
-  posTerminals,
   settlementBanks,
   nexthubParticipantLimits,
-  kybDocuments,
-  kybVerifications,
-  realtimeNotificationPreferences,
   apiRateLimitRules,
-  fxRates,
   nexthubDfsps,
   nexthubParticipants,
 } from "../../drizzle/nexthub_schema";
+import {
+  fxRates,
+  kybDocuments,
+  kybVerifications,
+  posTerminals,
+  realtimeNotificationPreferences,
+} from "../../drizzle/schema";
 import { storagePut } from "../storage";
 import { notifyOwner } from "../_core/notification";
 

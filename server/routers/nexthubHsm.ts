@@ -16,6 +16,9 @@ import { z } from "zod/v4";
 import { router, hubOperatorProcedure } from "../_core/trpc";
 import { logger } from "../logger";
 import { publishKafkaEvent, NEXTHUB_KAFKA_TOPICS } from "../kafka/nexthubKafkaProducer";
+import { db } from "../db";
+import { hsmKeys, hsmOperations, keyRotationLog } from "../../drizzle/national_switch_schema";
+import { eq, desc } from "drizzle-orm";
 
 const HSM_ADAPTER_URL = process.env.HSM_ADAPTER_GRPC_REST_URL ?? "http://hsm-adapter:8221";
 

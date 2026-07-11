@@ -16,6 +16,7 @@ import { router } from "../_core/trpc";
 import { protectedProcedure, hubOperatorProcedure } from "../_core/trpc";
 import { db } from "../db";
 import { settlementWindows, settlementNetPositions } from "../../drizzle/nexthub_schema";
+import { rtgsSubmissions, cbLiquidityPositions } from "../../drizzle/national_switch_schema";
 import { publishKafkaEvent, NEXTHUB_KAFKA_TOPICS } from "../kafka/nexthubKafkaProducer";
 import { cache, TTL } from "../cache";
 import { logger } from "../logger";

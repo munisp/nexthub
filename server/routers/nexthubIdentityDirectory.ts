@@ -16,6 +16,9 @@ import { router, protectedProcedure, hubOperatorProcedure } from "../_core/trpc"
 import { cache, TTL } from "../cache";
 import { logger } from "../logger";
 import { publishKafkaEvent, NEXTHUB_KAFKA_TOPICS } from "../kafka/nexthubKafkaProducer";
+import { db } from "../db";
+import { dictAliases, identityLookups, biometricVerifications } from "../../drizzle/national_switch_schema";
+import { eq, desc, and } from "drizzle-orm";
 
 const DICT_SERVICE_URL = process.env.DICT_SERVICE_URL ?? "http://identity-directory:8200";
 const BIOMETRIC_SERVICE_URL = process.env.BIOMETRIC_SERVICE_URL ?? "http://biometric-verifier:8210";

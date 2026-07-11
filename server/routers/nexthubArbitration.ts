@@ -23,6 +23,13 @@ import { cache, TTL } from "../cache";
 import { publishKafkaEvent, NEXTHUB_KAFKA_TOPICS } from "../kafka/nexthubKafkaProducer";
 import { eq, desc, and, gte, lte, sql } from "drizzle-orm";
 import { nexthubTransfers } from "../../drizzle/nexthub_schema";
+import {
+  disputeWorkflows,
+  disputeEvidence,
+  disputeDecisions,
+  disputeChargebacks,
+  disputeMlScores,
+} from "../../drizzle/national_switch_schema";
 
 const TEMPORAL_API_URL = process.env.TEMPORAL_API_URL ?? "http://temporal-frontend:7233";
 const ML_SCORER_URL    = process.env.ML_SCORER_URL    ?? "http://dispute-ml-scorer:8230";

@@ -120,6 +120,36 @@ func main() {
 		v1.POST("/momo/reconcile",             h.ReconcileMoMo)
 	}
 
+	// ── NextHub national switch ledger routes (TigerBeetle) ──────────────────
+	nexthub := r.Group("/nexthub", bMiddleware.InternalKeyAuth(cfg.InternalKey))
+	{
+		// Account provisioning
+		nexthub.POST("/ledger/provision-participant",  h.ProvisionParticipantAccounts)
+		nexthub.POST("/ledger/provision-nqr-merchant", h.ProvisionNqrMerchantAccount)
+		nexthub.POST("/ledger/provision-cbdc-wallet",  h.ProvisionCbdcWalletAccount)
+
+		// Transfer posting
+		nexthub.POST("/ledger/nip-transfer",           h.PostNipTransfer)
+		nexthub.POST("/ledger/pisp-reserve",           h.ReservePispPayment)
+		nexthub.POST("/ledger/pisp-commit",            h.CommitPispPayment)
+		nexthub.POST("/ledger/pisp-void",              h.VoidPispPayment)
+		nexthub.POST("/ledger/bulk-transfer-leg",      h.PostBulkTransferLeg)
+		nexthub.POST("/ledger/fx-conversion",          h.PostFxConversion)
+		nexthub.POST("/ledger/remittance-transfer",    h.PostRemittanceTransfer)
+
+		// Two-phase settlement
+		nexthub.POST("/ledger/settlement-prepare",     h.PrepareSettlementWindow)
+		nexthub.POST("/ledger/settlement-commit",      h.CommitSettlementWindow)
+		nexthub.POST("/ledger/settlement-void",        h.VoidSettlementWindow)
+
+		// Dispute reversal
+		nexthub.POST("/ledger/dispute-reversal",        h.PostDisputeReversal)
+
+		// Balance queries
+		nexthub.POST("/ledger/account-balance",        h.GetAccountBalance)
+		nexthub.POST("/ledger/batch-balances",         h.BatchGetAccountBalances)
+	}
+
 	// ── HTTP server ───────────────────────────────────────────────────────────
 	srv := &http.Server{
 		Addr:         ":" + cfg.Port,

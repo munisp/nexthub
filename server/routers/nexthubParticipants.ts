@@ -3,6 +3,11 @@
 import { z } from "zod";
 import { protectedProcedure, hubOperatorProcedure, router } from "../_core/trpc";
 import { db } from "../db";
+import {
+  provisionParticipantTbAccountsViaMiddleware,
+  getParticipantTbBalanceViaMiddleware,
+  batchGetParticipantTbBalancesViaMiddleware,
+} from "../middlewareBridge";
 import { sql } from "drizzle-orm";
 
 const PositionLimitsSchema = z.object({
@@ -37,8 +42,31 @@ export const nexthubParticipantsRouter = router({
     }))
     .mutation(async ({ input }) => {
       const id = `DFSP-${input.dfspId.toUpperCase()}-${Date.now()}`;
-      await db.execute(sql.raw(`INSERT INTO nexthub_participants (id, name, dfsp_id, currency, status, scheme_type, endpoint_url, created_at, updated_at) VALUES ('${id}', '${input.name}', '${input.dfspId}', '${input.currency}', 'PENDING', '${input.schemeType}', '${input.endpointUrl}', NOW(), NOW())`));
-      return { participantId: id, status: "PENDING" };
+      // Provision TigerBeetle accounts (position + liquidity) for this participant
+      const tbAccounts = await provisionParticipantTbAccountsViaMiddleware({
+        participantId: id,
+        dfspId: input.dfspId,
+        currency: input.currency,
+        ledger: 1, // Ledger 1 = NGN interbank
+      });
+      await db.execute(sql.raw(
+        `INSERT INTO nexthub_participants
+           (id, name, dfsp_id, currency, status, scheme_type, endpoint_url,
+            tigerbeetle_position_account_id, tigerbeetle_liquidity_account_id,
+            tigerbeetle_ledger, created_at, updated_at)
+         VALUES
+           ('${id}', '${input.name}', '${input.dfspId}', '${input.currency}',
+            'PENDING', '${input.schemeType}', '${input.endpointUrl}',
+            '${tbAccounts?.positionAccountId ?? ""}',
+            '${tbAccounts?.liquidityAccountId ?? ""}',
+            1, NOW(), NOW())`
+      ));
+      return {
+        participantId: id,
+        status: "PENDING",
+        tigerBeetlePositionAccountId: tbAccounts?.positionAccountId,
+        tigerBeetleLiquidityAccountId: tbAccounts?.liquidityAccountId,
+      };
     }),
   suspend: hubOperatorProcedure
     .input(z.object({ participantId: z.string(), reason: z.string().min(5) }))
@@ -237,7 +265,7 @@ export const nexthubParticipantsRouter = router({
       status: z.enum(["OK", "ALERT", "BREACHED", "SUSPENDED", "ALL"]).default("ALL"),
     }))
     .query(async ({ input }) => {
-      // In production this reads from Redis via the middleware bridge
+      // Read live balances from TigerBeetle as source of truth
       // For the portal we query the positions snapshot table updated by the Go service
       const statusFilter = input.status !== "ALL"
         ? `AND position_status = '${input.status}'`

@@ -623,6 +623,9 @@ export const nexthubParticipants = pgTable("nexthub_participants", {
   status: text("status").notNull().default("PENDING"),
   schemeType: text("scheme_type").notNull().default("FSPIOP"),
   endpointUrl: text("endpoint_url").notNull(),
+  tigerBeetlePositionAccountId: text("tigerbeetle_position_account_id"),
+  tigerBeetleLiquidityAccountId: text("tigerbeetle_liquidity_account_id"),
+  tigerBeetleLedger: integer("tigerbeetle_ledger").default(1),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 });

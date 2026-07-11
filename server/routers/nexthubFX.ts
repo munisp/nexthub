@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { protectedProcedure, hubOperatorProcedure, router } from "../_core/trpc";
 import { db } from "../db";
+import { postFxConversionToLedgerViaMiddleware } from "../middlewareBridge";
 import { nexthubFxRates } from "../../drizzle/nexthub_schema";
 import { eq, and, gte, lte, desc } from "drizzle-orm";
 import { TRPCError } from "@trpc/server";

@@ -1829,3 +1829,177 @@ export async function getLakehouseReportViaMiddleware(params: {
   ).toString();
   return safe("GET", `/v1/lakehouse/reports?${qs}`);
 }
+
+// ─── NextHub TigerBeetle Account Provisioning ─────────────────────────────────
+/** Creates two TigerBeetle accounts (position + liquidity) for a new participant/DFSP */
+export async function provisionParticipantTbAccountsViaMiddleware(payload: {
+  participantId: string;
+  dfspId: string;
+  currency: string;
+  ledger: number;
+}): Promise<{ positionAccountId: string; liquidityAccountId: string } | null> {
+  return safe("POST", "/nexthub/ledger/provision-participant", payload);
+}
+
+/** Creates a TigerBeetle account for an NQR merchant */
+export async function provisionNqrMerchantTbAccountViaMiddleware(payload: {
+  merchantCode: string;
+  currency: string;
+  ledger: number;
+}): Promise<{ accountId: string } | null> {
+  return safe("POST", "/nexthub/ledger/provision-nqr-merchant", payload);
+}
+
+/** Creates TigerBeetle accounts for a CBDC wallet */
+export async function provisionCbdcWalletTbAccountViaMiddleware(payload: {
+  walletId: string;
+  ownerId: string;
+  currency: string;
+  ledger: number;
+}): Promise<{ accountId: string } | null> {
+  return safe("POST", "/nexthub/ledger/provision-cbdc-wallet", payload);
+}
+
+// ─── NextHub TigerBeetle Transfer Posting ─────────────────────────────────────
+/** Posts a NIP fund transfer as a double-entry in TigerBeetle */
+export async function postNipTransferToLedgerViaMiddleware(payload: {
+  transferId: string;
+  payerTbAccountId: string;
+  payeeTbAccountId: string;
+  amountKobo: number;
+  currency: string;
+  ledger: number;
+  nipRef: string;
+}): Promise<{ tbTransferId: string; result: string } | null> {
+  return safe("POST", "/nexthub/ledger/nip-transfer", payload);
+}
+
+/** Posts a PISP payment as a two-phase reserve in TigerBeetle */
+export async function reservePispPaymentInLedgerViaMiddleware(payload: {
+  consentId: string;
+  payerTbAccountId: string;
+  payeeTbAccountId: string;
+  amountKobo: number;
+  currency: string;
+  ledger: number;
+  timeoutSeconds: number;
+}): Promise<{ pendingTbId: string; result: string } | null> {
+  return safe("POST", "/nexthub/ledger/pisp-reserve", payload);
+}
+
+/** Commits a previously reserved PISP payment in TigerBeetle */
+export async function commitPispPaymentInLedgerViaMiddleware(payload: {
+  pendingTbId: string;
+  amountKobo: number;
+}): Promise<{ tbTransferId: string; result: string } | null> {
+  return safe("POST", "/nexthub/ledger/pisp-commit", payload);
+}
+
+/** Voids a previously reserved PISP payment in TigerBeetle */
+export async function voidPispPaymentInLedgerViaMiddleware(payload: {
+  pendingTbId: string;
+}): Promise<{ result: string } | null> {
+  return safe("POST", "/nexthub/ledger/pisp-void", payload);
+}
+
+/** Posts a single bulk transfer leg as a double-entry in TigerBeetle */
+export async function postBulkTransferLegToLedgerViaMiddleware(payload: {
+  legId: string;
+  batchId: string;
+  payerTbAccountId: string;
+  payeeTbAccountId: string;
+  amountKobo: number;
+  currency: string;
+  ledger: number;
+}): Promise<{ tbTransferId: string; result: string } | null> {
+  return safe("POST", "/nexthub/ledger/bulk-transfer-leg", payload);
+}
+
+/** Posts an FX conversion as two linked transfers (debit source, credit target) in TigerBeetle */
+export async function postFxConversionToLedgerViaMiddleware(payload: {
+  conversionId: string;
+  sourceTbAccountId: string;
+  targetTbAccountId: string;
+  sourceAmountKobo: number;
+  targetAmountKobo: number;
+  sourceLedger: number;
+  targetLedger: number;
+  rate: number;
+}): Promise<{ debitTbId: string; creditTbId: string; result: string } | null> {
+  return safe("POST", "/nexthub/ledger/fx-conversion", payload);
+}
+
+/** Posts a remittance transfer as a cross-currency double-entry in TigerBeetle */
+export async function postRemittanceTransferToLedgerViaMiddleware(payload: {
+  remittanceId: string;
+  senderTbAccountId: string;
+  beneficiaryTbAccountId: string;
+  sendAmountKobo: number;
+  receiveAmountKobo: number;
+  sendCurrency: string;
+  receiveCurrency: string;
+  sendLedger: number;
+  receiveLedger: number;
+}): Promise<{ tbTransferId: string; result: string } | null> {
+  return safe("POST", "/nexthub/ledger/remittance-transfer", payload);
+}
+
+// ─── NextHub TigerBeetle Two-Phase Settlement ─────────────────────────────────
+/** Prepares (reserves) all net position transfers for a settlement window */
+export async function prepareSettlementWindowInLedgerViaMiddleware(payload: {
+  windowId: string;
+  netPositions: Array<{
+    dfspId: string;
+    tbAccountId: string;
+    hubTbAccountId: string;
+    netPositionKobo: number;
+    currency: string;
+    ledger: number;
+  }>;
+}): Promise<{ pendingIds: Record<string, string>; result: string } | null> {
+  return safe("POST", "/nexthub/ledger/settlement-prepare", payload);
+}
+
+/** Commits all pending settlement transfers after CBN RTGS confirmation */
+export async function commitSettlementWindowInLedgerViaMiddleware(payload: {
+  windowId: string;
+  pendingIds: Record<string, string>;
+}): Promise<{ committed: number; result: string } | null> {
+  return safe("POST", "/nexthub/ledger/settlement-commit", payload);
+}
+
+/** Voids all pending settlement transfers (on RTGS failure) */
+export async function voidSettlementWindowInLedgerViaMiddleware(payload: {
+  windowId: string;
+  pendingIds: Record<string, string>;
+}): Promise<{ voided: number; result: string } | null> {
+  return safe("POST", "/nexthub/ledger/settlement-void", payload);
+}
+
+/** Posts a dispute chargeback reversal in TigerBeetle */
+export async function postDisputeReversalToLedgerViaMiddleware(payload: {
+  disputeId: string;
+  originalTbTransferId: string;
+  payerTbAccountId: string;
+  payeeTbAccountId: string;
+  amountKobo: number;
+  currency: string;
+  ledger: number;
+}): Promise<{ reversalTbId: string; result: string } | null> {
+  return safe("POST", "/nexthub/ledger/dispute-reversal", payload);
+}
+
+// ─── NextHub TigerBeetle Balance Queries ──────────────────────────────────────
+/** Reads a participant's live position balance from TigerBeetle */
+export async function getParticipantTbBalanceViaMiddleware(payload: {
+  tbAccountId: string;
+}): Promise<{ creditsPosted: number; debitsPosted: number; creditsPending: number; debitsPending: number; balance: number } | null> {
+  return safe("POST", "/nexthub/ledger/account-balance", payload);
+}
+
+/** Reads multiple participant balances in a single batch from TigerBeetle */
+export async function batchGetParticipantTbBalancesViaMiddleware(payload: {
+  tbAccountIds: string[];
+}): Promise<Array<{ tbAccountId: string; balance: number; creditsPending: number; debitsPending: number }> | null> {
+  return safe("POST", "/nexthub/ledger/batch-balances", payload);
+}

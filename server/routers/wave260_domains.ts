@@ -12,6 +12,11 @@ import { z } from "zod";
 import { router, protectedProcedure } from "../_core/trpc";
 import { db } from "../db";
 import {
+  provisionCbdcWalletTbAccountViaMiddleware,
+  postRemittanceTransferToLedgerViaMiddleware,
+  cbdcTransferViaMiddleware,
+} from "../middlewareBridge";
+import {
   cbdcAccounts,
   cbdcTransfers,
   g2pDisbursementBatches,

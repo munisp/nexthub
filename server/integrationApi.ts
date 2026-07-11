@@ -36,9 +36,9 @@ import {
 } from "../drizzle/nexthub_schema";
 import { eq, desc, and, gte, lte, sql } from "drizzle-orm";
 import { nexthubPublish } from "./kafka/nexthubKafkaProducer";
-
 import { handleNqrWebhook, registerNqrSseClient } from "./nibss/nqrService";
 import { logger } from "./logger";
+import { postNipTransferToLedgerViaMiddleware } from "./middlewareBridge";
 // ─── Rate limiters ────────────────────────────────────────────────────────────
 
 const globalLimiter = rateLimit({
@@ -325,6 +325,19 @@ export function createIntegrationRouter(): Router {
           console.error("[integrationApi] AML flag Kafka publish failed:", err?.message),
         );
       }
+
+      // ── Post to TigerBeetle ledger (double-entry) ──────────────────────
+      postNipTransferToLedgerViaMiddleware({
+        transferId: transfer.id,
+        payerTbAccountId: payerFspId,
+        payeeTbAccountId: payeeFspId,
+        amountKobo: amountNum,
+        currency: currency ?? "NGN",
+        ledger: 1,
+        nipRef: transfer.id,
+      }).catch((err) =>
+        console.error("[integrationApi] TigerBeetle posting failed:", err?.message),
+      );
 
       // ── Publish Kafka event ──────────────────────────────────────────────
       nexthubPublish.transferReceived({

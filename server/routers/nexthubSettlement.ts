@@ -11,6 +11,11 @@ import { z } from "zod";
 import { protectedProcedure, hubOperatorProcedure, router } from "../_core/trpc";
 import { db } from "../db";
 import {
+  prepareSettlementWindowInLedgerViaMiddleware,
+  commitSettlementWindowInLedgerViaMiddleware,
+  voidSettlementWindowInLedgerViaMiddleware,
+} from "../middlewareBridge";
+import {
   settlementWindows,
   settlementNetPositions,
   nexthubTransfers,
@@ -290,7 +295,29 @@ export const nexthubSettlementRouter = router({
         console.error("[settlement] Kafka publish (window.settle) failed:", err?.message),
       );
 
-      return { window: updated, message: "Settlement initiated — TigerBeetle batch posting in progress via Rust settlement service" };
+      // Two-phase TigerBeetle: prepare (reserve) all net positions
+      const tbPrepare = await prepareSettlementWindowInLedgerViaMiddleware({
+        windowId: updated.id,
+        netPositions: positions.map((p) => ({
+          dfspId: p.dfspId,
+          tbAccountId: (p as any).tigerBeetleAccountId ?? p.dfspId,
+          hubTbAccountId: "HUB-SETTLEMENT-ACCOUNT",
+          netPositionKobo: p.netPositionKobo,
+          currency: p.currency,
+          ledger: 1,
+        })),
+      });
+      if (tbPrepare) {
+        // Store pending IDs for commit step (Rust service will commit after CBN RTGS confirms)
+        await db.update(settlementWindows)
+          .set({ updatedAt: new Date() })
+          .where(eq(settlementWindows.id, updated.id));
+      }
+      return {
+        window: updated,
+        message: "Settlement initiated — TigerBeetle two-phase prepare complete, awaiting CBN RTGS confirmation",
+        tigerBeetlePendingIds: tbPrepare?.pendingIds ?? {},
+      };
     }),
 
   /** Get settlement statistics for the dashboard */

@@ -15,6 +15,10 @@
 import QRCode from "qrcode";
 import { eq, and, lt, inArray } from "drizzle-orm";
 import { db } from "../db";
+import {
+  provisionNqrMerchantTbAccountViaMiddleware,
+  postNipTransferToLedgerViaMiddleware,
+} from "../middlewareBridge";
 import { nqrTransactions, nqrMerchantProfiles } from "../../drizzle/nqr_schema";
 import type { InsertNqrTransaction } from "../../drizzle/nqr_schema";
 import { cache, TTL } from "../cache";

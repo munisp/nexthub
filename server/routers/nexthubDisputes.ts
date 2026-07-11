@@ -8,6 +8,7 @@
 import { z } from "zod";
 import { protectedProcedure, hubOperatorProcedure, router } from "../_core/trpc";
 import { db } from "../db";
+import { postDisputeReversalToLedgerViaMiddleware } from "../middlewareBridge";
 import { transferDisputes, feePostings } from "../../drizzle/nexthub_schema";
 import { eq, desc, sql, and } from "drizzle-orm";
 import { TRPCError } from "@trpc/server";

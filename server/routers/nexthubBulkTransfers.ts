@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { protectedProcedure, router } from "../_core/trpc";
 import { db } from "../db";
+import { postBulkTransferLegToLedgerViaMiddleware } from "../middlewareBridge";
 import { nexthubBulkTransfers } from "../../drizzle/nexthub_schema";
 import { eq, desc, and, gte, lte } from "drizzle-orm";
 import { TRPCError } from "@trpc/server";

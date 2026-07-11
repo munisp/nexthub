@@ -9,6 +9,7 @@ import {
   batchGetParticipantTbBalancesViaMiddleware,
 } from "../middlewareBridge";
 import { sql } from "drizzle-orm";
+import { nexthubPublish } from "../kafka/nexthubKafkaProducer";
 
 const PositionLimitsSchema = z.object({
   participantId: z.string().min(1),
@@ -61,6 +62,14 @@ export const nexthubParticipantsRouter = router({
             '${tbAccounts?.liquidityAccountId ?? ""}',
             1, NOW(), NOW())`
       ));
+      nexthubPublish.participantStatus({
+        dfspId: input.dfspId,
+        dfspName: input.name,
+        previousStatus: "NONE",
+        newStatus: "PENDING",
+        reason: "Participant onboarded",
+        timestamp: new Date().toISOString(),
+      }).catch(() => {});
       return {
         participantId: id,
         status: "PENDING",
@@ -72,12 +81,27 @@ export const nexthubParticipantsRouter = router({
     .input(z.object({ participantId: z.string(), reason: z.string().min(5) }))
     .mutation(async ({ input }) => {
       await db.execute(sql.raw(`UPDATE nexthub_participants SET status = 'SUSPENDED', updated_at = NOW() WHERE id = '${input.participantId}'`));
+      nexthubPublish.participantSuspended({
+        participantId: input.participantId,
+        dfspId: input.participantId,
+        status: "SUSPENDED",
+        reason: input.reason,
+        timestamp: new Date().toISOString(),
+      }).catch(() => {});
       return { participantId: input.participantId, status: "SUSPENDED" };
     }),
   activate: hubOperatorProcedure
     .input(z.object({ participantId: z.string() }))
     .mutation(async ({ input }) => {
       await db.execute(sql.raw(`UPDATE nexthub_participants SET status = 'ACTIVE', updated_at = NOW() WHERE id = '${input.participantId}'`));
+      nexthubPublish.participantStatus({
+        dfspId: input.participantId,
+        dfspName: input.participantId,
+        previousStatus: "SUSPENDED",
+        newStatus: "ACTIVE",
+        reason: "Reactivated",
+        timestamp: new Date().toISOString(),
+      }).catch(() => {});
       return { participantId: input.participantId, status: "ACTIVE" };
     }),
   // ── Participant Lifecycle ──────────────────────────────────────────────────
@@ -160,6 +184,14 @@ export const nexthubParticipantsRouter = router({
            'PENDING', '${input.schemeType}', '${input.endpointUrl}',
            NOW(), NOW())
       `));
+      nexthubPublish.participantStatus({
+        dfspId: input.dfspId,
+        dfspName: input.name,
+        previousStatus: "NONE",
+        newStatus: "PENDING",
+        reason: "Participant onboarding initiated",
+        timestamp: new Date().toISOString(),
+      }).catch(() => {});
       return { participantId: id, status: "PENDING", message: "Participant onboarding initiated" };
     }),
 
@@ -174,6 +206,13 @@ export const nexthubParticipantsRouter = router({
         SET status = 'SUSPENDED', updated_at = NOW()
         WHERE id = '${input.participantId}'
       `));
+      nexthubPublish.participantSuspended({
+        participantId: input.participantId,
+        dfspId: input.participantId,
+        status: "SUSPENDED",
+        reason: input.reason,
+        timestamp: new Date().toISOString(),
+      }).catch(() => {});
       return { participantId: input.participantId, status: "SUSPENDED", reason: input.reason };
     }),
 
@@ -185,6 +224,14 @@ export const nexthubParticipantsRouter = router({
         SET status = 'ACTIVE', updated_at = NOW()
         WHERE id = '${input.participantId}'
       `));
+      nexthubPublish.participantStatus({
+        dfspId: input.participantId,
+        dfspName: input.participantId,
+        previousStatus: "SUSPENDED",
+        newStatus: "ACTIVE",
+        reason: "Reactivated by operator",
+        timestamp: new Date().toISOString(),
+      }).catch(() => {});
       return { participantId: input.participantId, status: "ACTIVE" };
     }),
 
@@ -199,6 +246,13 @@ export const nexthubParticipantsRouter = router({
         SET status = 'OFFBOARDED', updated_at = NOW()
         WHERE id = '${input.participantId}'
       `));
+      nexthubPublish.participantOffboarded({
+        participantId: input.participantId,
+        dfspId: input.participantId,
+        status: "OFFBOARDED",
+        reason: input.reason,
+        timestamp: new Date().toISOString(),
+      }).catch(() => {});
       return { participantId: input.participantId, status: "OFFBOARDED" };
     }),
 

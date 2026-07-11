@@ -44,6 +44,50 @@ export const NEXTHUB_KAFKA_TOPICS = {
   DISPUTE_ESCALATED:     "nexthub.dispute.escalated.v1",
   AML_FLAG:              "nexthub.aml.flag.v1",
 
+  // Participant lifecycle
+  PARTICIPANT_SUSPENDED:    "nexthub.participant.suspended.v1",
+  PARTICIPANT_OFFBOARDED:   "nexthub.participant.offboarded.v1",
+  // PISP / Consent
+  PISP_CONSENT_GRANTED:     "nexthub.pisp.consent.granted.v1",
+  PISP_CONSENT_REVOKED:     "nexthub.pisp.consent.revoked.v1",
+  PISP_PAYMENT_EXECUTED:    "nexthub.pisp.payment.executed.v1",
+  // Dispute
+  DISPUTE_REVIEWED:         "nexthub.dispute.reviewed.v1",
+  DISPUTE_UPHELD:           "nexthub.dispute.upheld.v1",
+  DISPUTE_REJECTED:         "nexthub.dispute.rejected.v1",
+  // FX
+  FX_CONVERSION:            "nexthub.fx.conversion.v1",
+  // Billing
+  INVOICE_ISSUED:           "nexthub.billing.invoice.issued.v1",
+  INVOICE_PAID:             "nexthub.billing.invoice.paid.v1",
+  FEE_TIER_UPDATED:         "nexthub.billing.fee_tier.updated.v1",
+  // DFSP
+  DFSP_REGISTERED:          "nexthub.dfsp.registered.v1",
+  DFSP_UPDATED:             "nexthub.dfsp.updated.v1",
+  // Oracle
+  ORACLE_REGISTERED:        "nexthub.oracle.registered.v1",
+  ORACLE_DEACTIVATED:       "nexthub.oracle.deactivated.v1",
+  // Reconciliation
+  RECON_EXCEPTION_RAISED:   "nexthub.recon.exception.raised.v1",
+  RECON_EXCEPTION_RESOLVED: "nexthub.recon.exception.resolved.v1",
+  // Security
+  SECURITY_EVENT:           "nexthub.security.event.v1",
+  AML_RULE_CHANGED:         "nexthub.aml.rule.changed.v1",
+  // CBDC
+  CBDC_ACCOUNT_CREATED:     "nexthub.cbdc.account.created.v1",
+  CBDC_TRANSFER:            "nexthub.cbdc.transfer.v1",
+  // G2P
+  G2P_BATCH_CREATED:        "nexthub.g2p.batch.created.v1",
+  G2P_BATCH_APPROVED:       "nexthub.g2p.batch.approved.v1",
+  // Remittance
+  REMITTANCE_INITIATED:     "nexthub.remittance.initiated.v1",
+  CORRIDOR_REGISTERED:      "nexthub.remittance.corridor.registered.v1",
+  // Healthcare
+  HEALTHCARE_CLAIM:         "nexthub.healthcare.claim.v1",
+  // Bulk transfers
+  BULK_TRANSFER_CREATED:    "nexthub.bulk.transfer.created.v1",
+  // NDC
+  NDC_LIMIT_UPDATED:        "nexthub.ndc.limit.updated.v1",
   // Paygate → NextHub (consumed here)
   PAYGATE_AUDIT:         "paygate.audit.v1",
   PAYGATE_CORRIDOR_VOL:  "paygate.corridor.volume.v1",
@@ -153,6 +197,168 @@ export interface ParticipantStatusEvent {
   previousStatus: string;
   newStatus: string;
   reason: string;
+  timestamp: string;
+}
+
+// ─── Additional typed event interfaces ──────────────────────────────────────
+export interface ParticipantLifecycleEvent {
+  participantId: string;
+  dfspId: string;
+  status: string;
+  reason?: string;
+  timestamp: string;
+}
+export interface PispConsentEvent {
+  consentId: string;
+  pispId: string;
+  dfspId: string;
+  state: string;
+  timestamp: string;
+}
+export interface PispPaymentExecutedEvent {
+  consentId: string;
+  transferId: string;
+  amountKobo: number;
+  currency: string;
+  timestamp: string;
+}
+export interface DisputeLifecycleEvent {
+  disputeId: string;
+  transferId: string;
+  status: string;
+  resolution?: string;
+  initiatedByDfspId: string;
+  amountKobo: number;
+  currency: string;
+  timestamp: string;
+}
+export interface FxConversionEvent {
+  sourceCurrency: string;
+  targetCurrency: string;
+  sourceAmount: string;
+  targetAmount: string;
+  rate: string;
+  timestamp: string;
+}
+export interface InvoiceKafkaEvent {
+  invoiceId: string;
+  dfspId: string;
+  totalAmountKobo: number;
+  currency: string;
+  status: string;
+  timestamp: string;
+}
+export interface FeeTierKafkaEvent {
+  dfspId: string;
+  feeType: string;
+  feeAmountKobo: number;
+  currency: string;
+  timestamp: string;
+}
+export interface DfspKafkaEvent {
+  dfspId: string;
+  name: string;
+  status?: string;
+  timestamp: string;
+}
+export interface HsmKeyKafkaEvent {
+  keyLabel: string;
+  keyType: string;
+  eventType: "GENERATED" | "ROTATED" | "RETIRED";
+  performedBy: string;
+  timestamp: string;
+}
+export interface OracleKafkaEvent {
+  oracleId: string;
+  oracleType: string;
+  endpoint: string;
+  isActive: boolean;
+  timestamp: string;
+}
+export interface ReconExceptionKafkaEvent {
+  exceptionId: string;
+  transferId: string;
+  breakType: string;
+  status: string;
+  dfspId: string;
+  timestamp: string;
+}
+export interface SecurityKafkaEvent {
+  eventId: string;
+  eventType: string;
+  severity: string;
+  dfspId?: string;
+  description: string;
+  timestamp: string;
+}
+export interface AmlRuleKafkaEvent {
+  ruleId: string;
+  ruleName: string;
+  isEnabled: boolean;
+  timestamp: string;
+}
+export interface CbdcAccountKafkaEvent {
+  accountId: string;
+  ownerId: string;
+  currency: string;
+  ledger: number;
+  timestamp: string;
+}
+export interface CbdcTransferKafkaEvent {
+  transferId: string;
+  fromAccountId: string;
+  toAccountId: string;
+  amountKobo: number;
+  currency: string;
+  timestamp: string;
+}
+export interface G2pBatchKafkaEvent {
+  batchId: string;
+  programId: string;
+  totalAmountKobo: number;
+  recipientCount: number;
+  status: string;
+  timestamp: string;
+}
+export interface RemittanceKafkaEvent {
+  transferId: string;
+  senderCountry: string;
+  receiverCountry: string;
+  amountKobo: number;
+  currency: string;
+  timestamp: string;
+}
+export interface CorridorKafkaEvent {
+  corridorId: string;
+  sourceCountry: string;
+  destinationCountry: string;
+  isActive: boolean;
+  timestamp: string;
+}
+export interface HealthcareClaimKafkaEvent {
+  claimId: string;
+  providerId: string;
+  payerId: string;
+  amountKobo: number;
+  currency: string;
+  status: string;
+  timestamp: string;
+}
+export interface BulkTransferKafkaEvent {
+  bulkTransferId: string;
+  payerFsp: string;
+  totalTransfers: number;
+  totalAmountKobo: number;
+  currency: string;
+  state: string;
+  timestamp: string;
+}
+export interface NdcLimitKafkaEvent {
+  dfspId: string;
+  dfspName: string;
+  limitType: string;
+  limitAmountKobo: number;
+  currency: string;
   timestamp: string;
 }
 
@@ -270,6 +476,94 @@ export const nexthubPublish = {
     publishKafkaEvent(NEXTHUB_KAFKA_TOPICS.PARTICIPANT_STATUS, e, e.dfspId),
   amlFlag: (e: AmlFlagEvent) =>
     publishKafkaEvent(NEXTHUB_KAFKA_TOPICS.AML_FLAG, e, e.transferId),
+
+  // ── Participant lifecycle ──────────────────────────────────────────────────────────
+  participantSuspended: (e: ParticipantLifecycleEvent) =>
+    publishKafkaEvent(NEXTHUB_KAFKA_TOPICS.PARTICIPANT_SUSPENDED, e, e.participantId),
+  participantOffboarded: (e: ParticipantLifecycleEvent) =>
+    publishKafkaEvent(NEXTHUB_KAFKA_TOPICS.PARTICIPANT_OFFBOARDED, e, e.participantId),
+
+  // ── PISP ───────────────────────────────────────────────────────────────────────────────
+  pispConsentGranted: (e: PispConsentEvent) =>
+    publishKafkaEvent(NEXTHUB_KAFKA_TOPICS.PISP_CONSENT_GRANTED, e, e.consentId),
+  pispConsentRevoked: (e: PispConsentEvent) =>
+    publishKafkaEvent(NEXTHUB_KAFKA_TOPICS.PISP_CONSENT_REVOKED, e, e.consentId),
+  pispPaymentExecuted: (e: PispPaymentExecutedEvent) =>
+    publishKafkaEvent(NEXTHUB_KAFKA_TOPICS.PISP_PAYMENT_EXECUTED, e, e.consentId),
+
+  // ── Dispute ────────────────────────────────────────────────────────────────────────
+  disputeReviewed: (e: DisputeLifecycleEvent) =>
+    publishKafkaEvent(NEXTHUB_KAFKA_TOPICS.DISPUTE_REVIEWED, e, e.disputeId),
+  disputeUpheld: (e: DisputeLifecycleEvent) =>
+    publishKafkaEvent(NEXTHUB_KAFKA_TOPICS.DISPUTE_UPHELD, e, e.disputeId),
+  disputeRejected: (e: DisputeLifecycleEvent) =>
+    publishKafkaEvent(NEXTHUB_KAFKA_TOPICS.DISPUTE_REJECTED, e, e.disputeId),
+
+  // ── FX ──────────────────────────────────────────────────────────────────────────────
+  fxRatePublished: (e: FxConversionEvent) =>
+    publishKafkaEvent(NEXTHUB_KAFKA_TOPICS.FX_CONVERSION, e, `${e.sourceCurrency}/${e.targetCurrency}`),
+
+  // ── Billing ──────────────────────────────────────────────────────────────────────
+  invoiceIssued: (e: InvoiceKafkaEvent) =>
+    publishKafkaEvent(NEXTHUB_KAFKA_TOPICS.INVOICE_ISSUED, e, e.invoiceId),
+  invoicePaid: (e: InvoiceKafkaEvent) =>
+    publishKafkaEvent(NEXTHUB_KAFKA_TOPICS.INVOICE_PAID, e, e.invoiceId),
+  feeTierUpdated: (e: FeeTierKafkaEvent) =>
+    publishKafkaEvent(NEXTHUB_KAFKA_TOPICS.FEE_TIER_UPDATED, e, e.dfspId),
+
+  // ── DFSP ───────────────────────────────────────────────────────────────────────────
+  dfspRegistered: (e: DfspKafkaEvent) =>
+    publishKafkaEvent(NEXTHUB_KAFKA_TOPICS.DFSP_REGISTERED, e, e.dfspId),
+  dfspUpdated: (e: DfspKafkaEvent) =>
+    publishKafkaEvent(NEXTHUB_KAFKA_TOPICS.DFSP_UPDATED, e, e.dfspId),
+
+  // ── Oracle ────────────────────────────────────────────────────────────────────────
+  oracleRegistered: (e: OracleKafkaEvent) =>
+    publishKafkaEvent(NEXTHUB_KAFKA_TOPICS.ORACLE_REGISTERED, e, e.oracleId),
+  oracleDeactivated: (e: OracleKafkaEvent) =>
+    publishKafkaEvent(NEXTHUB_KAFKA_TOPICS.ORACLE_DEACTIVATED, e, e.oracleId),
+
+  // ── Reconciliation ───────────────────────────────────────────────────────────────
+  reconExceptionRaised: (e: ReconExceptionKafkaEvent) =>
+    publishKafkaEvent(NEXTHUB_KAFKA_TOPICS.RECON_EXCEPTION_RAISED, e, e.exceptionId),
+  reconExceptionResolved: (e: ReconExceptionKafkaEvent) =>
+    publishKafkaEvent(NEXTHUB_KAFKA_TOPICS.RECON_EXCEPTION_RESOLVED, e, e.exceptionId),
+
+  // ── Security ─────────────────────────────────────────────────────────────────────
+  securityEvent: (e: SecurityKafkaEvent) =>
+    publishKafkaEvent(NEXTHUB_KAFKA_TOPICS.SECURITY_EVENT, e, e.eventId),
+  amlRuleChanged: (e: AmlRuleKafkaEvent) =>
+    publishKafkaEvent(NEXTHUB_KAFKA_TOPICS.AML_RULE_CHANGED, e, e.ruleId),
+
+  // ── CBDC ───────────────────────────────────────────────────────────────────────────
+  cbdcAccountCreated: (e: CbdcAccountKafkaEvent) =>
+    publishKafkaEvent(NEXTHUB_KAFKA_TOPICS.CBDC_ACCOUNT_CREATED, e, e.accountId),
+  cbdcTransfer: (e: CbdcTransferKafkaEvent) =>
+    publishKafkaEvent(NEXTHUB_KAFKA_TOPICS.CBDC_TRANSFER, e, e.transferId),
+
+  // ── G2P ─────────────────────────────────────────────────────────────────────────────
+  g2pBatchCreated: (e: G2pBatchKafkaEvent) =>
+    publishKafkaEvent(NEXTHUB_KAFKA_TOPICS.G2P_BATCH_CREATED, e, e.batchId),
+  g2pBatchApproved: (e: G2pBatchKafkaEvent) =>
+    publishKafkaEvent(NEXTHUB_KAFKA_TOPICS.G2P_BATCH_APPROVED, e, e.batchId),
+
+  // ── Remittance ───────────────────────────────────────────────────────────────────
+  remittanceInitiated: (e: RemittanceKafkaEvent) =>
+    publishKafkaEvent(NEXTHUB_KAFKA_TOPICS.REMITTANCE_INITIATED, e, e.transferId),
+  corridorRegistered: (e: CorridorKafkaEvent) =>
+    publishKafkaEvent(NEXTHUB_KAFKA_TOPICS.CORRIDOR_REGISTERED, e, e.corridorId),
+
+  // ── Healthcare ──────────────────────────────────────────────────────────────────
+  healthcareClaim: (e: HealthcareClaimKafkaEvent) =>
+    publishKafkaEvent(NEXTHUB_KAFKA_TOPICS.HEALTHCARE_CLAIM, e, e.claimId),
+
+  // ── Bulk transfers ───────────────────────────────────────────────────────────────
+  bulkTransferCreated: (e: BulkTransferKafkaEvent) =>
+    publishKafkaEvent(NEXTHUB_KAFKA_TOPICS.BULK_TRANSFER_CREATED, e, e.bulkTransferId),
+
+  // ── NDC ────────────────────────────────────────────────────────────────────────────
+  ndcLimitUpdated: (e: NdcLimitKafkaEvent) =>
+    publishKafkaEvent(NEXTHUB_KAFKA_TOPICS.NDC_LIMIT_UPDATED, e, e.dfspId),
 };
 
 // ─── Graceful shutdown ────────────────────────────────────────────────────────

@@ -10,6 +10,7 @@ import { db } from "../db";
 import { nexthubDfsps, dfspFeeTiers } from "../../drizzle/nexthub_schema";
 import { eq, desc, sql, and, ilike } from "drizzle-orm";
 import { TRPCError } from "@trpc/server";
+import { nexthubPublish } from "../kafka/nexthubKafkaProducer";
 
 export const nexthubDfspsRouter = router({
 
@@ -100,9 +101,12 @@ export const nexthubDfspsRouter = router({
         onboardedAt: new Date(),
       }).returning();
 
-      // In production: Temporal workflow provisions TigerBeetle accounts
-      // and publishes nexthub.dfsps.onboarded to Fluvio
-
+      nexthubPublish.dfspRegistered({
+        dfspId: dfsp.dfspId,
+        name: dfsp.dfspName,
+        status: "ACTIVE",
+        timestamp: new Date().toISOString(),
+      }).catch(() => {});
       return dfsp;
     }),
 
@@ -133,6 +137,12 @@ export const nexthubDfspsRouter = router({
         .returning();
 
       if (!updated) throw new TRPCError({ code: "NOT_FOUND", message: "DFSP not found" });
+      nexthubPublish.dfspUpdated({
+        dfspId: updated.dfspId,
+        name: updated.dfspName,
+        status: updated.status ?? undefined,
+        timestamp: new Date().toISOString(),
+      }).catch(() => {});
       return updated;
     }),
 

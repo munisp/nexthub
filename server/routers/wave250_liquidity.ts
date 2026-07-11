@@ -20,6 +20,7 @@ import {
 } from "../../drizzle/nexthub_schema";
 import { eq, desc, and, isNull } from "drizzle-orm";
 import { safe } from "../middlewareBridge";
+import { nexthubPublish } from "../kafka/nexthubKafkaProducer";
 
 export const wave250Router = router({
   // ─── Collateral Deposits ─────────────────────────────────────────────────
@@ -134,6 +135,14 @@ export const wave250Router = router({
         })
         .returning();
 
+      nexthubPublish.ndcLimitUpdated({
+        dfspId: result.dfspId,
+        dfspName: result.dfspName,
+        limitType: "NDC",
+        limitAmountKobo: result.ndcLimitKobo,
+        currency: "NGN",
+        timestamp: new Date().toISOString(),
+      }).catch(() => {});
       return result;
     }),
 

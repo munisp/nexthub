@@ -16,6 +16,7 @@ import {
 } from "../../drizzle/nexthub_schema";
 import { eq, desc, sql, and, gte, lte } from "drizzle-orm";
 import { TRPCError } from "@trpc/server";
+import { nexthubPublish } from "../kafka/nexthubKafkaProducer";
 
 export const nexthubBillingRouter = router({
 
@@ -55,6 +56,13 @@ export const nexthubBillingRouter = router({
         volumeDiscountBands: input.volumeDiscountBands,
         effectiveFrom: input.effectiveFrom ?? new Date(),
       }).returning();
+      nexthubPublish.feeTierUpdated({
+        dfspId: tier.dfspId,
+        feeType: tier.feeType,
+        feeAmountKobo: tier.flatRateBps ?? 0,
+        currency: "NGN",
+        timestamp: new Date().toISOString(),
+      }).catch(() => {});
       return tier;
     }),
 
@@ -208,6 +216,7 @@ export const nexthubBillingRouter = router({
         issuedAt: new Date(),
       }).returning();
 
+      // No Kafka for DRAFT — publish on issue
       return invoice;
     }),
 
@@ -221,6 +230,14 @@ export const nexthubBillingRouter = router({
         .returning();
 
       if (!updated) throw new TRPCError({ code: "NOT_FOUND", message: "Draft invoice not found" });
+      nexthubPublish.invoiceIssued({
+        invoiceId: updated.id,
+        dfspId: updated.dfspId,
+        totalAmountKobo: updated.totalAmountKobo,
+        currency: "NGN",
+        status: "ISSUED",
+        timestamp: new Date().toISOString(),
+      }).catch(() => {});
       return updated;
     }),
 
@@ -242,6 +259,14 @@ export const nexthubBillingRouter = router({
         .returning();
 
       if (!updated) throw new TRPCError({ code: "NOT_FOUND", message: "Invoice not found" });
+      nexthubPublish.invoicePaid({
+        invoiceId: updated.id,
+        dfspId: updated.dfspId,
+        totalAmountKobo: updated.totalAmountKobo,
+        currency: "NGN",
+        status: "PAID",
+        timestamp: new Date().toISOString(),
+      }).catch(() => {});
       return updated;
     }),
 

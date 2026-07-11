@@ -11,6 +11,7 @@ import { db } from "../db";
 import { reconciliationExceptions, settlementWindows } from "../../drizzle/nexthub_schema";
 import { eq, desc, sql, and, isNull } from "drizzle-orm";
 import { TRPCError } from "@trpc/server";
+import { nexthubPublish } from "../kafka/nexthubKafkaProducer";
 
 const BREAK_SLA_MINUTES: Record<string, number> = {
   TIMING: 120,
@@ -110,6 +111,14 @@ export const nexthubReconciliationRouter = router({
         autoResolveSlaMinutes: slaMinutes,
       }).returning();
 
+      nexthubPublish.reconExceptionRaised({
+        exceptionId: exception.id,
+        transferId: exception.transferId ?? "",
+        breakType: exception.breakType,
+        status: "OPEN",
+        dfspId: exception.dfspId ?? "",
+        timestamp: new Date().toISOString(),
+      }).catch(() => {});
       return exception;
     }),
 
@@ -133,6 +142,14 @@ export const nexthubReconciliationRouter = router({
         .returning();
 
       if (!updated) throw new TRPCError({ code: "NOT_FOUND", message: "Exception not found" });
+      nexthubPublish.reconExceptionResolved({
+        exceptionId: updated.id,
+        transferId: updated.transferId ?? "",
+        breakType: updated.breakType,
+        status: updated.status,
+        dfspId: updated.dfspId ?? "",
+        timestamp: new Date().toISOString(),
+      }).catch(() => {});
       return updated;
     }),
 
@@ -157,6 +174,14 @@ export const nexthubReconciliationRouter = router({
         .returning();
 
       if (!updated) throw new TRPCError({ code: "NOT_FOUND", message: "Exception not found" });
+      nexthubPublish.reconExceptionRaised({
+        exceptionId: updated.id,
+        transferId: updated.transferId ?? "",
+        breakType: updated.breakType,
+        status: "ESCALATED",
+        dfspId: updated.dfspId ?? "",
+        timestamp: new Date().toISOString(),
+      }).catch(() => {});
       return updated;
     }),
 

@@ -10,6 +10,7 @@ import { protectedProcedure, hubOperatorProcedure, router } from "../_core/trpc"
 import { db } from "../db";
 import { postDisputeReversalToLedgerViaMiddleware } from "../middlewareBridge";
 import { transferDisputes, feePostings } from "../../drizzle/nexthub_schema";
+import { nexthubPublish } from "../kafka/nexthubKafkaProducer";
 import { eq, desc, sql, and } from "drizzle-orm";
 import { TRPCError } from "@trpc/server";
 
@@ -102,6 +103,15 @@ export const nexthubDisputesRouter = router({
         slaDeadline,
       }).returning();
 
+      nexthubPublish.disputeReviewed({
+        disputeId: dispute.id,
+        transferId: dispute.transferId,
+        status: "OPEN",
+        initiatedByDfspId: dispute.initiatedByDfspId,
+        amountKobo: dispute.amountKobo,
+        currency: dispute.currency,
+        timestamp: new Date().toISOString(),
+      }).catch(() => {});
       return dispute;
     }),
 
@@ -115,6 +125,15 @@ export const nexthubDisputesRouter = router({
         .returning();
 
       if (!updated) throw new TRPCError({ code: "NOT_FOUND", message: "Open dispute not found" });
+      nexthubPublish.disputeReviewed({
+        disputeId: updated.id,
+        transferId: updated.transferId,
+        status: "UNDER_REVIEW",
+        initiatedByDfspId: updated.initiatedByDfspId,
+        amountKobo: updated.amountKobo,
+        currency: updated.currency,
+        timestamp: new Date().toISOString(),
+      }).catch(() => {});
       return updated;
     }),
 
@@ -149,9 +168,29 @@ export const nexthubDisputesRouter = router({
         .where(eq(transferDisputes.id, input.disputeId))
         .returning();
 
-      // In production: publish nexthub.disputes.upheld to Fluvio
-      // Rust nexthub-settlement will post VOID_PENDING_TRANSFER to TigerBeetle
-
+      // Publish dispute upheld event
+      nexthubPublish.disputeUpheld({
+        disputeId: updated.id,
+        transferId: updated.transferId,
+        status: "UPHELD",
+        resolution: "UPHELD",
+        initiatedByDfspId: updated.initiatedByDfspId,
+        amountKobo: updated.amountKobo,
+        currency: updated.currency,
+        timestamp: new Date().toISOString(),
+      }).catch(() => {});
+      // Fire TigerBeetle reversal
+      if (dispute.transferId) {
+        postDisputeReversalToLedgerViaMiddleware({
+          disputeId: dispute.id,
+          originalTbTransferId: input.reversalTransferId ?? `rev-${dispute.id}`,
+          payerTbAccountId: dispute.respondingDfspId ?? dispute.initiatedByDfspId,
+          payeeTbAccountId: dispute.initiatedByDfspId,
+          amountKobo: dispute.amountKobo,
+          currency: dispute.currency,
+          ledger: 1,
+        }).catch(() => {});
+      }
       return updated;
     }),
 
@@ -195,6 +234,16 @@ export const nexthubDisputesRouter = router({
         .where(eq(transferDisputes.id, input.disputeId))
         .returning();
 
+      nexthubPublish.disputeRejected({
+        disputeId: updated.id,
+        transferId: updated.transferId,
+        status: "REJECTED",
+        resolution: "REJECTED",
+        initiatedByDfspId: updated.initiatedByDfspId,
+        amountKobo: updated.amountKobo,
+        currency: updated.currency,
+        timestamp: new Date().toISOString(),
+      }).catch(() => {});
       return updated;
     }),
 
@@ -215,6 +264,15 @@ export const nexthubDisputesRouter = router({
         .returning();
 
       if (!updated) throw new TRPCError({ code: "NOT_FOUND", message: "Dispute not found" });
+      nexthubPublish.disputeReviewed({
+        disputeId: updated.id,
+        transferId: updated.transferId,
+        status: "ESCALATED",
+        initiatedByDfspId: updated.initiatedByDfspId,
+        amountKobo: updated.amountKobo,
+        currency: updated.currency,
+        timestamp: new Date().toISOString(),
+      }).catch(() => {});
       return updated;
     }),
 

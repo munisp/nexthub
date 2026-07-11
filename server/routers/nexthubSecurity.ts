@@ -10,6 +10,7 @@ import { db } from "../db";
 import { nexthubSecurityEvents, amlRules, nexthubDfsps } from "../../drizzle/nexthub_schema";
 import { eq, desc, sql, and, lt } from "drizzle-orm";
 import { TRPCError } from "@trpc/server";
+import { nexthubPublish } from "../kafka/nexthubKafkaProducer";
 
 export const nexthubSecurityRouter = router({
 
@@ -74,6 +75,14 @@ export const nexthubSecurityRouter = router({
         metadata: input.metadata,
         acknowledged: false,
       }).returning();
+      nexthubPublish.securityEvent({
+        eventId: event.id,
+        eventType: event.eventType,
+        severity: event.severity,
+        dfspId: event.dfspId ?? undefined,
+        description: event.description,
+        timestamp: new Date().toISOString(),
+      }).catch(() => {});
       return event;
     }),
 
@@ -147,6 +156,12 @@ export const nexthubSecurityRouter = router({
         isEnabled: input.isEnabled,
         createdBy: input.createdBy,
       }).returning();
+      nexthubPublish.amlRuleChanged({
+        ruleId: rule.id,
+        ruleName: rule.ruleName,
+        isEnabled: rule.isEnabled,
+        timestamp: new Date().toISOString(),
+      }).catch(() => {});
       return rule;
     }),
 
@@ -163,6 +178,12 @@ export const nexthubSecurityRouter = router({
         .returning();
 
       if (!updated) throw new TRPCError({ code: "NOT_FOUND", message: "AML rule not found" });
+      nexthubPublish.amlRuleChanged({
+        ruleId: updated.id,
+        ruleName: updated.ruleName,
+        isEnabled: updated.isEnabled,
+        timestamp: new Date().toISOString(),
+      }).catch(() => {});
       return updated;
     }),
 

@@ -9,6 +9,7 @@ import {
 import { nexthubPispConsents } from "../../drizzle/nexthub_schema";
 import { eq, desc, and } from "drizzle-orm";
 import { TRPCError } from "@trpc/server";
+import { nexthubPublish } from "../kafka/nexthubKafkaProducer";
 
 export const nexthubPISPRouter = router({
   // List all PISP consents
@@ -83,6 +84,13 @@ export const nexthubPISPRouter = router({
         .where(eq(nexthubPispConsents.consentId, input.consentId))
         .returning();
 
+      nexthubPublish.pispConsentRevoked({
+        consentId: updated.consentId,
+        pispId: updated.pispId,
+        dfspId: updated.dfspId,
+        state: "REVOKED",
+        timestamp: new Date().toISOString(),
+      }).catch(() => {});
       return updated;
     }),
 

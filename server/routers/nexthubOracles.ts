@@ -5,6 +5,7 @@ import { nexthubOracles } from "../../drizzle/nexthub_schema";
 import { eq, desc, and } from "drizzle-orm";
 import { TRPCError } from "@trpc/server";
 import { randomUUID } from "crypto";
+import { nexthubPublish } from "../kafka/nexthubKafkaProducer";
 
 export const nexthubOraclesRouter = router({
   // List all registered oracles
@@ -65,6 +66,13 @@ export const nexthubOraclesRouter = router({
         })
         .returning();
 
+      nexthubPublish.oracleRegistered({
+        oracleId: oracle.oracleId,
+        oracleType: oracle.partyIdType,
+        endpoint: oracle.endpoint,
+        isActive: true,
+        timestamp: new Date().toISOString(),
+      }).catch(() => {});
       return oracle;
     }),
 

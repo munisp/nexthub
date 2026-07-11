@@ -28,6 +28,7 @@ import {
 import { eq, desc, and } from "drizzle-orm";
 import { safe } from "../middlewareBridge";
 import { ENV } from "../_core/env";
+import { nexthubPublish } from "../kafka/nexthubKafkaProducer";
 
 // ─── Lakehouse helper ─────────────────────────────────────────────────────────
 
@@ -81,6 +82,13 @@ const cbdcRouter = router({
         })
         .returning();
 
+      nexthubPublish.cbdcAccountCreated({
+        accountId: account.id,
+        ownerId: account.ownerId,
+        currency: account.currency,
+        ledger: 10,
+        timestamp: new Date().toISOString(),
+      }).catch(() => {});
       return account;
     }),
 
@@ -123,6 +131,14 @@ const cbdcRouter = router({
         lakehouseSynced: false,
       });
 
+      nexthubPublish.cbdcTransfer({
+        transferId: transfer.id,
+        fromAccountId: transfer.senderWallet,
+        toAccountId: transfer.receiverWallet,
+        amountKobo: Math.round(transfer.amount * 100),
+        currency: transfer.currency,
+        timestamp: new Date().toISOString(),
+      }).catch(() => {});
       return transfer;
     }),
 
@@ -210,6 +226,14 @@ const g2pRouter = router({
         })
         .returning();
 
+      nexthubPublish.g2pBatchCreated({
+        batchId: batch.id,
+        programId: batch.programId,
+        totalAmountKobo: Math.round((batch.totalAmount ?? 0) * 100),
+        recipientCount: batch.beneficiaryCount,
+        status: "PENDING",
+        timestamp: new Date().toISOString(),
+      }).catch(() => {});
       return batch;
     }),
 
@@ -224,6 +248,14 @@ const g2pRouter = router({
         .where(eq(g2pDisbursementBatches.id, input.batchId))
         .returning();
 
+      nexthubPublish.g2pBatchApproved({
+        batchId: updated.id,
+        programId: updated.programId,
+        totalAmountKobo: Math.round((updated.totalAmount ?? 0) * 100),
+        recipientCount: updated.beneficiaryCount,
+        status: "PROCESSING",
+        timestamp: new Date().toISOString(),
+      }).catch(() => {});
       return updated;
     }),
 
@@ -276,6 +308,13 @@ const remittanceRouter = router({
           maxAmount: 5_000_000,
         })
         .returning();
+      nexthubPublish.corridorRegistered({
+        corridorId: corridor.id,
+        sourceCountry: corridor.fromCountry,
+        destinationCountry: corridor.toCountry,
+        isActive: corridor.isActive === 1,
+        timestamp: new Date().toISOString(),
+      }).catch(() => {});
       return corridor;
     }),
 
@@ -332,6 +371,14 @@ const remittanceRouter = router({
         })
         .returning();
 
+      nexthubPublish.remittanceInitiated({
+        transferId: transfer.id,
+        senderCountry: input.senderFsp,
+        receiverCountry: input.receiverFsp,
+        amountKobo: Math.round(transfer.sendAmount * 100),
+        currency: transfer.sendCurrency,
+        timestamp: new Date().toISOString(),
+      }).catch(() => {});
       return transfer;
     }),
 });
@@ -398,6 +445,15 @@ const healthcareRouter = router({
         })
         .returning();
 
+      nexthubPublish.healthcareClaim({
+        claimId: claim.id,
+        providerId: claim.providerId,
+        payerId: claim.policyNumber,
+        amountKobo: Math.round(claim.claimAmount * 100),
+        currency: claim.currency,
+        status: "SUBMITTED",
+        timestamp: new Date().toISOString(),
+      }).catch(() => {});
       return claim;
     }),
 

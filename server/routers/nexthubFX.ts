@@ -3,6 +3,7 @@ import { protectedProcedure, hubOperatorProcedure, router } from "../_core/trpc"
 import { db } from "../db";
 import { postFxConversionToLedgerViaMiddleware } from "../middlewareBridge";
 import { nexthubFxRates } from "../../drizzle/nexthub_schema";
+import { nexthubPublish } from "../kafka/nexthubKafkaProducer";
 import { eq, and, gte, lte, desc } from "drizzle-orm";
 import { TRPCError } from "@trpc/server";
 
@@ -83,6 +84,17 @@ export const nexthubFXRouter = router({
         })
         .returning();
 
+      nexthubPublish.fxRates({
+        sourceCurrency: rate.sourceCurrency,
+        targetCurrency: rate.targetCurrency,
+        midRate: parseFloat(rate.rate),
+        buyRate: parseFloat(rate.rate) * 0.999,
+        sellRate: parseFloat(rate.rate) * 1.001,
+        markupBps: 10,
+        validFrom: rate.validFrom.toISOString(),
+        validTo: rate.validTo.toISOString(),
+        provider: rate.provider,
+      }).catch(() => {});
       return rate;
     }),
 

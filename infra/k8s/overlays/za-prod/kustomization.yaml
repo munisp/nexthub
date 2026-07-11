@@ -1,0 +1,37 @@
+---
+# overlays/za-prod/kustomization.yaml — South Africa Production Region (Johannesburg)
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: nexthub-za
+resources:
+  - ../../base/nexthub-core-deployment.yaml
+  - ../../base/autoscaling.yaml
+  - ../../base/kafka-ha.yaml
+  - ../../base/postgres-ha.yaml
+  - ../../base/redis-sentinel-ha.yaml
+commonLabels:
+  region: za
+  environment: production
+  hub-tier: secondary
+patches:
+  - patch: |-
+      - op: replace
+        path: /spec/replicas
+        value: 3
+    target:
+      kind: Deployment
+      name: nexthub-core
+configMapGenerator:
+  - name: nexthub-region-config
+    literals:
+      - REGION=za
+      - REGION_NAME=South Africa
+      - CURRENCY=ZAR
+      - TIMEZONE=Africa/Johannesburg
+      - NIBSS_ENABLED=false
+      - KAFKA_PARTITIONS=20
+      - DB_POOL_SIZE=50
+      - REGULATORY_JURISDICTION=SARB
+      - CONTINENTAL_HUB=false
+      - CROSS_BORDER_ENABLED=true
+      - PRIMARY_HUB_URL=https://api.paygate.ng

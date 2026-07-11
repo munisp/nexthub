@@ -36,6 +36,8 @@ import { wave230Router } from "./routers/wave230_security";
 import { wave240Router } from "./routers/wave240_workflows";
 import { wave250Router } from "./routers/wave250_liquidity";
 import { wave260Router } from "./routers/wave260_domains";
+import { nibssNipRouter } from "./routers/nibssNip";
+import { nexthubTenantsRouter } from "./routers/nexthubTenants";
 
 // ─── App Router ───────────────────────────────────────────────────────────────
 export const appRouter = router({
@@ -77,6 +79,10 @@ export const appRouter = router({
 
   // Wave 260: CBDC, G2P, Remittance, Healthcare, Audit Trail + Lakehouse
   wave260Domains: wave260Router,
+  // NIBSS / NIP: Nigerian payment rails (NIP, NQR, NEFT, RTGS, BVN)
+  nibssNip: nibssNipRouter,
+  // Multi-tenant & white-label management
+  nexthubTenants: nexthubTenantsRouter,
 });
 
 export type AppRouter = typeof appRouter;

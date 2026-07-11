@@ -1,0 +1,55 @@
+---
+# overlays/ng-prod/kustomization.yaml
+# Nigeria Production Region — Primary hub (Lagos, Abuja)
+# ─────────────────────────────────────────────────────────────────────────────
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: nexthub-ng
+
+resources:
+  - ../../base/nexthub-core-deployment.yaml
+  - ../../base/autoscaling.yaml
+  - ../../base/kafka-ha.yaml
+  - ../../base/postgres-ha.yaml
+  - ../../base/redis-sentinel-ha.yaml
+  - ingress.yaml
+
+commonLabels:
+  region: ng
+  environment: production
+  hub-tier: primary
+
+patches:
+  # Nigeria: higher replica count (primary hub)
+  - patch: |-
+      - op: replace
+        path: /spec/replicas
+        value: 5
+    target:
+      kind: Deployment
+      name: nexthub-core
+
+  # Nigeria: larger HPA max (primary hub handles all NIBSS traffic)
+  - patch: |-
+      - op: replace
+        path: /spec/maxReplicas
+        value: 100
+    target:
+      kind: HorizontalPodAutoscaler
+      name: nexthub-core-hpa
+
+configMapGenerator:
+  - name: nexthub-region-config
+    literals:
+      - REGION=ng
+      - REGION_NAME=Nigeria
+      - CURRENCY=NGN
+      - TIMEZONE=Africa/Lagos
+      - NIBSS_ENABLED=true
+      - MOJALOOP_SCHEME=NG
+      - KAFKA_PARTITIONS=60
+      - DB_POOL_SIZE=100
+      - REGULATORY_JURISDICTION=CBN
+      - CONTINENTAL_HUB=true
+      - CROSS_BORDER_ENABLED=true

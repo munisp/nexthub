@@ -1,0 +1,145 @@
+---
+# postgres-ha.yaml — PostgreSQL High-Availability with Patroni + pgBouncer
+# ─────────────────────────────────────────────────────────────────────────────
+# Uses CloudNativePG operator for Kubernetes-native PostgreSQL management.
+# Architecture:
+#   - 1 primary + 2 synchronous replicas (HA within region)
+#   - pgBouncer connection pooling (transaction mode, max 1000 connections)
+#   - Automatic failover via CloudNativePG leader election
+#   - Cross-region read replicas for continental scale (see overlays)
+
+apiVersion: postgresql.cnpg.io/v1
+kind: Cluster
+metadata:
+  name: nexthub-postgres
+  namespace: nexthub
+spec:
+  instances: 3
+  imageName: ghcr.io/cloudnative-pg/postgresql:16.3
+
+  primaryUpdateStrategy: unsupervised   # auto-failover on primary failure
+
+  postgresql:
+    parameters:
+      # Performance tuning for 1B tx/day workload
+      max_connections: "500"
+      shared_buffers: "4GB"
+      effective_cache_size: "12GB"
+      maintenance_work_mem: "1GB"
+      checkpoint_completion_target: "0.9"
+      wal_buffers: "64MB"
+      default_statistics_target: "100"
+      random_page_cost: "1.1"
+      effective_io_concurrency: "200"
+      work_mem: "16MB"
+      min_wal_size: "1GB"
+      max_wal_size: "4GB"
+      max_worker_processes: "8"
+      max_parallel_workers_per_gather: "4"
+      max_parallel_workers: "8"
+      max_parallel_maintenance_workers: "4"
+      # Logical replication for cross-region read replicas
+      wal_level: logical
+      max_replication_slots: "10"
+      max_wal_senders: "10"
+      # Synchronous replication for HA within region
+      synchronous_commit: "on"
+      synchronous_standby_names: "ANY 1 (*)"
+
+  bootstrap:
+    initdb:
+      database: nexthub
+      owner: nexthub
+      secret:
+        name: nexthub-postgres-credentials
+      postInitSQL:
+        - CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
+        - CREATE EXTENSION IF NOT EXISTS "pg_stat_statements";
+        - CREATE EXTENSION IF NOT EXISTS "pg_trgm";
+        - CREATE EXTENSION IF NOT EXISTS "btree_gin";
+        # Row-level security for multi-tenant isolation
+        - ALTER DATABASE nexthub SET row_security = on;
+
+  storage:
+    size: 2Ti
+    storageClass: ssd-regional
+
+  resources:
+    requests:
+      memory: "8Gi"
+      cpu: "2"
+    limits:
+      memory: "16Gi"
+      cpu: "8"
+
+  affinity:
+    topologyKey: topology.kubernetes.io/zone   # spread across AZs
+
+  backup:
+    retentionPolicy: "30d"
+    barmanObjectStore:
+      destinationPath: s3://nexthub-postgres-backups
+      s3Credentials:
+        accessKeyId:
+          name: nexthub-s3-credentials
+          key: ACCESS_KEY_ID
+        secretAccessKey:
+          name: nexthub-s3-credentials
+          key: SECRET_ACCESS_KEY
+      wal:
+        compression: gzip
+        maxParallel: 8
+      data:
+        compression: gzip
+        immediateCheckpoint: true
+
+  monitoring:
+    enablePodMonitor: true
+---
+# ── pgBouncer connection pooler ───────────────────────────────────────────────
+apiVersion: postgresql.cnpg.io/v1
+kind: Pooler
+metadata:
+  name: nexthub-pgbouncer-rw
+  namespace: nexthub
+spec:
+  cluster:
+    name: nexthub-postgres
+  instances: 3
+  type: rw                          # read-write pool → primary
+  pgbouncer:
+    poolMode: transaction
+    parameters:
+      max_client_conn: "1000"
+      default_pool_size: "50"
+      min_pool_size: "10"
+      reserve_pool_size: "10"
+      reserve_pool_timeout: "5"
+      server_idle_timeout: "600"
+      client_idle_timeout: "0"
+  template:
+    spec:
+      resources:
+        requests:
+          cpu: "200m"
+          memory: "256Mi"
+        limits:
+          cpu: "1000m"
+          memory: "512Mi"
+---
+apiVersion: postgresql.cnpg.io/v1
+kind: Pooler
+metadata:
+  name: nexthub-pgbouncer-ro
+  namespace: nexthub
+spec:
+  cluster:
+    name: nexthub-postgres
+  instances: 3
+  type: ro                          # read-only pool → replicas
+  pgbouncer:
+    poolMode: transaction
+    parameters:
+      max_client_conn: "2000"
+      default_pool_size: "100"
+      min_pool_size: "20"

@@ -1,0 +1,96 @@
+---
+# ingress.yaml — Nigeria Production (APISIX Ingress + cert-manager TLS)
+# ─────────────────────────────────────────────────────────────────────────────
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: nexthub-ng-ingress
+  namespace: nexthub-ng
+  annotations:
+    kubernetes.io/ingress.class: apisix
+    # Rate limiting via APISIX plugin
+    k8s.apisix.apache.org/plugin-config-name: nexthub-rate-limit
+    # TLS auto-renewal via cert-manager
+    cert-manager.io/cluster-issuer: letsencrypt-prod
+    # CORS headers
+    k8s.apisix.apache.org/cors: "true"
+    # Sticky sessions for SSE connections
+    nginx.ingress.kubernetes.io/affinity: cookie
+    nginx.ingress.kubernetes.io/session-cookie-name: nexthub-node
+    nginx.ingress.kubernetes.io/session-cookie-expires: "3600"
+spec:
+  tls:
+    - hosts:
+        - hub.paygate.ng
+        - api.paygate.ng
+        - grpc.paygate.ng
+      secretName: nexthub-ng-tls
+  rules:
+    - host: hub.paygate.ng
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: nexthub-core
+                port:
+                  number: 80
+    - host: api.paygate.ng
+      http:
+        paths:
+          - path: /api/v1
+            pathType: Prefix
+            backend:
+              service:
+                name: nexthub-core
+                port:
+                  number: 80
+          - path: /health
+            pathType: Exact
+            backend:
+              service:
+                name: nexthub-core
+                port:
+                  number: 80
+---
+# APISIX Plugin Config for rate limiting
+apiVersion: apisix.apache.org/v2
+kind: ApisixPluginConfig
+metadata:
+  name: nexthub-rate-limit
+  namespace: nexthub-ng
+spec:
+  plugins:
+    - name: limit-req
+      enable: true
+      config:
+        rate: 1000        # 1000 req/s burst
+        burst: 200
+        key: remote_addr
+        rejected_code: 429
+    - name: limit-conn
+      enable: true
+      config:
+        conn: 5000        # max 5000 concurrent connections
+        burst: 1000
+        default_conn_delay: 0.1
+        key: remote_addr
+        rejected_code: 503
+    - name: cors
+      enable: true
+      config:
+        allow_origins: "https://hub.paygate.ng,https://admin.paygate.ng"
+        allow_methods: "GET,POST,PUT,DELETE,OPTIONS"
+        allow_headers: "Authorization,Content-Type,X-Request-ID,X-Tenant-ID"
+        max_age: 3600
+    - name: response-rewrite
+      enable: true
+      config:
+        headers:
+          set:
+            Strict-Transport-Security: "max-age=31536000; includeSubDomains; preload"
+            X-Content-Type-Options: nosniff
+            X-Frame-Options: DENY
+            X-XSS-Protection: "1; mode=block"
+            X-Hub-Region: ng

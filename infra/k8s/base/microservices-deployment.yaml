@@ -1,0 +1,426 @@
+---
+# ─────────────────────────────────────────────────────────────────────────────
+# NextHub Microservices Deployment
+# Covers: tenant-provisioning (Go), branding-compiler (Rust),
+#         tenant-analytics (Python), ussd-gateway (Go)
+# ─────────────────────────────────────────────────────────────────────────────
+
+# ── Tenant Provisioning Service (Go) ─────────────────────────────────────────
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: tenant-provisioning
+  namespace: nexthub
+  labels:
+    app: tenant-provisioning
+    tier: services
+    language: go
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: tenant-provisioning
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  template:
+    metadata:
+      labels:
+        app: tenant-provisioning
+        language: go
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "8130"
+        prometheus.io/path: "/metrics"
+    spec:
+      serviceAccountName: nexthub-services
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65534
+      containers:
+        - name: tenant-provisioning
+          image: nexthub/tenant-provisioning:latest
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 8130
+              name: http
+          env:
+            - name: PORT
+              value: "8130"
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: nexthub-db-secret
+                  key: url
+            - name: REDIS_URL
+              valueFrom:
+                secretKeyRef:
+                  name: nexthub-redis-secret
+                  key: url
+            - name: KAFKA_BROKERS
+              valueFrom:
+                configMapKeyRef:
+                  name: nexthub-kafka-config
+                  key: brokers
+            - name: INTERNAL_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: nexthub-internal-secret
+                  key: api-key
+          resources:
+            requests:
+              cpu: 100m
+              memory: 64Mi
+            limits:
+              cpu: 500m
+              memory: 256Mi
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8130
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8130
+            initialDelaySeconds: 3
+            periodSeconds: 5
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: tenant-provisioning
+  namespace: nexthub
+spec:
+  selector:
+    app: tenant-provisioning
+  ports:
+    - port: 8130
+      targetPort: 8130
+      name: http
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: tenant-provisioning-hpa
+  namespace: nexthub
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: tenant-provisioning
+  minReplicas: 2
+  maxReplicas: 10
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 70
+    - type: Resource
+      resource:
+        name: memory
+        target:
+          type: Utilization
+          averageUtilization: 80
+
+---
+# ── Branding Compiler Service (Rust) ─────────────────────────────────────────
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: branding-compiler
+  namespace: nexthub
+  labels:
+    app: branding-compiler
+    tier: services
+    language: rust
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: branding-compiler
+  template:
+    metadata:
+      labels:
+        app: branding-compiler
+        language: rust
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65534
+      containers:
+        - name: branding-compiler
+          image: nexthub/branding-compiler:latest
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 8131
+              name: http
+          env:
+            - name: PORT
+              value: "8131"
+            - name: REDIS_URL
+              valueFrom:
+                secretKeyRef:
+                  name: nexthub-redis-secret
+                  key: url
+            - name: CDN_BASE_URL
+              valueFrom:
+                configMapKeyRef:
+                  name: nexthub-cdn-config
+                  key: base-url
+          resources:
+            requests:
+              cpu: 50m
+              memory: 32Mi
+            limits:
+              cpu: 200m
+              memory: 128Mi
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8131
+            initialDelaySeconds: 3
+            periodSeconds: 10
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8131
+            initialDelaySeconds: 2
+            periodSeconds: 5
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: branding-compiler
+  namespace: nexthub
+spec:
+  selector:
+    app: branding-compiler
+  ports:
+    - port: 8131
+      targetPort: 8131
+      name: http
+
+---
+# ── Tenant Analytics Service (Python) ────────────────────────────────────────
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: tenant-analytics
+  namespace: nexthub
+  labels:
+    app: tenant-analytics
+    tier: services
+    language: python
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: tenant-analytics
+  template:
+    metadata:
+      labels:
+        app: tenant-analytics
+        language: python
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "8132"
+        prometheus.io/path: "/metrics"
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65534
+      containers:
+        - name: tenant-analytics
+          image: nexthub/tenant-analytics:latest
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 8132
+              name: http
+          env:
+            - name: PORT
+              value: "8132"
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: nexthub-db-secret
+                  key: url
+            - name: KAFKA_BROKERS
+              valueFrom:
+                configMapKeyRef:
+                  name: nexthub-kafka-config
+                  key: brokers
+            - name: INTERNAL_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: nexthub-internal-secret
+                  key: api-key
+          resources:
+            requests:
+              cpu: 200m
+              memory: 256Mi
+            limits:
+              cpu: 1000m
+              memory: 1Gi
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8132
+            initialDelaySeconds: 10
+            periodSeconds: 15
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8132
+            initialDelaySeconds: 8
+            periodSeconds: 10
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: tenant-analytics
+  namespace: nexthub
+spec:
+  selector:
+    app: tenant-analytics
+  ports:
+    - port: 8132
+      targetPort: 8132
+      name: http
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: tenant-analytics-hpa
+  namespace: nexthub
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: tenant-analytics
+  minReplicas: 2
+  maxReplicas: 8
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 70
+
+---
+# ── USSD Gateway Service (Go) ─────────────────────────────────────────────────
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ussd-gateway
+  namespace: nexthub
+  labels:
+    app: ussd-gateway
+    tier: services
+    language: go
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: ussd-gateway
+  template:
+    metadata:
+      labels:
+        app: ussd-gateway
+        language: go
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65534
+      containers:
+        - name: ussd-gateway
+          image: nexthub/ussd-gateway:latest
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 8133
+              name: http
+          env:
+            - name: PORT
+              value: "8133"
+            - name: REDIS_URL
+              valueFrom:
+                secretKeyRef:
+                  name: nexthub-redis-secret
+                  key: url
+            - name: HUB_API_URL
+              value: "http://nexthub-core:80"
+            - name: HUB_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: nexthub-internal-secret
+                  key: api-key
+            - name: NIBSS_GATEWAY_URL
+              valueFrom:
+                configMapKeyRef:
+                  name: nexthub-nibss-config
+                  key: gateway-url
+          resources:
+            requests:
+              cpu: 100m
+              memory: 64Mi
+            limits:
+              cpu: 500m
+              memory: 256Mi
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8133
+            initialDelaySeconds: 3
+            periodSeconds: 10
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8133
+            initialDelaySeconds: 2
+            periodSeconds: 5
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: ussd-gateway
+  namespace: nexthub
+spec:
+  selector:
+    app: ussd-gateway
+  ports:
+    - port: 8133
+      targetPort: 8133
+      name: http
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: ussd-gateway-hpa
+  namespace: nexthub
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: ussd-gateway
+  minReplicas: 3
+  maxReplicas: 20
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 60
+    - type: Pods
+      pods:
+        metric:
+          name: ussd_active_sessions
+        target:
+          type: AverageValue
+          averageValue: "500"

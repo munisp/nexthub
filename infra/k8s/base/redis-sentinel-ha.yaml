@@ -1,0 +1,202 @@
+---
+# redis-sentinel-ha.yaml — Redis Sentinel High-Availability
+# ─────────────────────────────────────────────────────────────────────────────
+# Uses Bitnami Redis Helm chart values (applied via Helm, not kubectl directly).
+# Architecture:
+#   - 1 Redis master + 2 replicas
+#   - 3 Sentinel nodes for automatic failover
+#   - maxmemory-policy: allkeys-lru (evict LRU keys when memory full)
+#   - Used for: rate-limit counters, idempotency key store, session cache, NIP name enquiry cache
+
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: nexthub-redis
+  namespace: nexthub
+  labels:
+    app: nexthub-redis
+spec:
+  serviceName: nexthub-redis-headless
+  replicas: 3
+  selector:
+    matchLabels:
+      app: nexthub-redis
+  template:
+    metadata:
+      labels:
+        app: nexthub-redis
+    spec:
+      affinity:
+        podAntiAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            - labelSelector:
+                matchExpressions:
+                  - key: app
+                    operator: In
+                    values: [nexthub-redis]
+              topologyKey: kubernetes.io/hostname
+      initContainers:
+        - name: config
+          image: redis:7.2-alpine
+          command: ["sh", "-c"]
+          args:
+            - |
+              if [ "$(hostname)" = "nexthub-redis-0" ]; then
+                echo "replica-priority 100" >> /etc/redis/redis.conf
+              else
+                echo "replica-priority 1" >> /etc/redis/redis.conf
+                echo "replicaof nexthub-redis-0.nexthub-redis-headless 6379" >> /etc/redis/redis.conf
+              fi
+          volumeMounts:
+            - name: redis-config
+              mountPath: /etc/redis
+      containers:
+        - name: redis
+          image: redis:7.2-alpine
+          command: ["redis-server", "/etc/redis/redis.conf"]
+          ports:
+            - name: redis
+              containerPort: 6379
+          env:
+            - name: REDIS_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: nexthub-secrets
+                  key: redis-password
+          resources:
+            requests:
+              cpu: "200m"
+              memory: "512Mi"
+            limits:
+              cpu: "1000m"
+              memory: "2Gi"
+          readinessProbe:
+            exec:
+              command: ["redis-cli", "ping"]
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            exec:
+              command: ["redis-cli", "ping"]
+            initialDelaySeconds: 15
+            periodSeconds: 20
+          volumeMounts:
+            - name: redis-config
+              mountPath: /etc/redis
+            - name: redis-data
+              mountPath: /data
+        - name: sentinel
+          image: redis:7.2-alpine
+          command: ["redis-sentinel", "/etc/redis/sentinel.conf"]
+          ports:
+            - name: sentinel
+              containerPort: 26379
+          volumeMounts:
+            - name: sentinel-config
+              mountPath: /etc/redis
+      volumes:
+        - name: redis-config
+          configMap:
+            name: nexthub-redis-config
+        - name: sentinel-config
+          configMap:
+            name: nexthub-sentinel-config
+  volumeClaimTemplates:
+    - metadata:
+        name: redis-data
+      spec:
+        accessModes: [ReadWriteOnce]
+        storageClassName: ssd-regional
+        resources:
+          requests:
+            storage: 50Gi
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: nexthub-redis-config
+  namespace: nexthub
+data:
+  redis.conf: |
+    bind 0.0.0.0
+    protected-mode no
+    port 6379
+    tcp-backlog 511
+    timeout 0
+    tcp-keepalive 300
+    daemonize no
+    loglevel notice
+    databases 16
+    save 900 1
+    save 300 10
+    save 60 10000
+    stop-writes-on-bgsave-error yes
+    rdbcompression yes
+    rdbchecksum yes
+    dbfilename dump.rdb
+    dir /data
+    maxmemory 1500mb
+    maxmemory-policy allkeys-lru
+    appendonly yes
+    appendfilename "appendonly.aof"
+    appendfsync everysec
+    no-appendfsync-on-rewrite no
+    auto-aof-rewrite-percentage 100
+    auto-aof-rewrite-min-size 64mb
+    slowlog-log-slower-than 10000
+    slowlog-max-len 128
+    latency-monitor-threshold 0
+    notify-keyspace-events ""
+    activerehashing yes
+    client-output-buffer-limit normal 0 0 0
+    client-output-buffer-limit replica 256mb 64mb 60
+    client-output-buffer-limit pubsub 32mb 8mb 60
+    hz 10
+    aof-rewrite-incremental-fsync yes
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: nexthub-sentinel-config
+  namespace: nexthub
+data:
+  sentinel.conf: |
+    port 26379
+    sentinel monitor nexthub-master nexthub-redis-0.nexthub-redis-headless 6379 2
+    sentinel down-after-milliseconds nexthub-master 5000
+    sentinel failover-timeout nexthub-master 60000
+    sentinel parallel-syncs nexthub-master 1
+    sentinel resolve-hostnames yes
+    sentinel announce-hostnames yes
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: nexthub-redis
+  namespace: nexthub
+  labels:
+    app: nexthub-redis
+spec:
+  selector:
+    app: nexthub-redis
+  ports:
+    - name: redis
+      port: 6379
+      targetPort: 6379
+    - name: sentinel
+      port: 26379
+      targetPort: 26379
+  type: ClusterIP
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: nexthub-redis-headless
+  namespace: nexthub
+spec:
+  selector:
+    app: nexthub-redis
+  clusterIP: None
+  ports:
+    - name: redis
+      port: 6379

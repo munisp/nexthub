@@ -156,3 +156,72 @@ export async function withFallback<T>(
     return fallback();
   }
 }
+
+// ─── Pre-registered circuit breakers for all external services ────────────────
+export const nibssCircuit       = getCircuitBreaker("nibss-nip",    { failureThreshold: 3, recoveryTimeMs: 30_000 });
+export const nibssRtgsCircuit   = getCircuitBreaker("nibss-rtgs",   { failureThreshold: 3, recoveryTimeMs: 60_000 });
+export const mojaloopCircuit    = getCircuitBreaker("mojaloop",     { failureThreshold: 5, recoveryTimeMs: 30_000 });
+export const grpcBridgeCircuit  = getCircuitBreaker("grpc-bridge",  { failureThreshold: 5, recoveryTimeMs: 15_000 });
+export const grpcFraudCircuit   = getCircuitBreaker("grpc-fraud",   { failureThreshold: 5, recoveryTimeMs: 15_000 });
+export const tigerbeetleCircuit = getCircuitBreaker("tigerbeetle",  { failureThreshold: 3, recoveryTimeMs: 20_000 });
+
+// ─── gRPC Health-Based Failover Registry ─────────────────────────────────────
+
+export interface GrpcEndpointEntry {
+  url: string;
+  healthy: boolean;
+  failureCount: number;
+  lastCheckedAt: number;
+}
+
+class GrpcFailoverRegistry {
+  private endpoints = new Map<string, GrpcEndpointEntry[]>();
+  private currentIndex = new Map<string, number>();
+
+  register(service: string, urls: string[]): void {
+    this.endpoints.set(service, urls.map((url) => ({
+      url, healthy: true, failureCount: 0, lastCheckedAt: Date.now(),
+    })));
+    this.currentIndex.set(service, 0);
+  }
+
+  getEndpoint(service: string): string {
+    const eps = this.endpoints.get(service);
+    if (!eps || eps.length === 0) throw new Error(`No endpoints for gRPC service: ${service}`);
+    const healthy = eps.filter((e) => e.healthy);
+    if (healthy.length === 0) {
+      eps.forEach((e) => { e.healthy = true; e.failureCount = 0; });
+      logger.warn("grpc_failover_reset", { service });
+      return eps[0].url;
+    }
+    const idx = (this.currentIndex.get(service) ?? 0) % healthy.length;
+    this.currentIndex.set(service, idx + 1);
+    return healthy[idx].url;
+  }
+
+  markUnhealthy(service: string, url: string): void {
+    const ep = this.endpoints.get(service)?.find((e) => e.url === url);
+    if (ep) {
+      ep.failureCount++;
+      if (ep.failureCount >= 3) {
+        ep.healthy = false;
+        logger.warn("grpc_endpoint_unhealthy", { service, url });
+      }
+    }
+  }
+
+  markHealthy(service: string, url: string): void {
+    const ep = this.endpoints.get(service)?.find((e) => e.url === url);
+    if (ep) { ep.healthy = true; ep.failureCount = 0; }
+  }
+
+  getStatus() {
+    const result: Record<string, { url: string; healthy: boolean; failureCount: number }[]> = {};
+    for (const [svc, eps] of this.endpoints) {
+      result[svc] = eps.map((e) => ({ url: e.url, healthy: e.healthy, failureCount: e.failureCount }));
+    }
+    return result;
+  }
+}
+
+export const grpcFailoverRegistry = new GrpcFailoverRegistry();

@@ -1,0 +1,37 @@
+---
+# overlays/ke-prod/kustomization.yaml — Kenya Production Region (Nairobi)
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: nexthub-ke
+resources:
+  - ../../base/nexthub-core-deployment.yaml
+  - ../../base/autoscaling.yaml
+  - ../../base/kafka-ha.yaml
+  - ../../base/postgres-ha.yaml
+  - ../../base/redis-sentinel-ha.yaml
+commonLabels:
+  region: ke
+  environment: production
+  hub-tier: secondary
+patches:
+  - patch: |-
+      - op: replace
+        path: /spec/replicas
+        value: 3
+    target:
+      kind: Deployment
+      name: nexthub-core
+configMapGenerator:
+  - name: nexthub-region-config
+    literals:
+      - REGION=ke
+      - REGION_NAME=Kenya
+      - CURRENCY=KES
+      - TIMEZONE=Africa/Nairobi
+      - NIBSS_ENABLED=false
+      - KAFKA_PARTITIONS=20
+      - DB_POOL_SIZE=50
+      - REGULATORY_JURISDICTION=CBK
+      - CONTINENTAL_HUB=false
+      - CROSS_BORDER_ENABLED=true
+      - PRIMARY_HUB_URL=https://api.paygate.ng

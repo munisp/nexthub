@@ -28,10 +28,16 @@ export const NEXTHUB_KAFKA_TOPICS = {
   TRANSFER_COMMITTED:    "nexthub.transfer.committed.v1",
   TRANSFER_ABORTED:      "nexthub.transfer.aborted.v1",
   FX_RATES:              "nexthub.fx.rates.v1",
+  FX_RATE_PUBLISHED:     "nexthub.fx.rate.published.v1",  // single rate publish event
   NDC_BREACH:            "nexthub.ndc.breach.v1",
+  SETTLEMENT_OPENED:     "nexthub.settlement.opened.v1",  // window opened
   SETTLEMENT_CLOSED:     "nexthub.settlement.closed.v1",
+  SETTLEMENT_SETTLE:     "nexthub.settlement.settle.v1",  // trigger Rust settlement service
   SETTLEMENT_SETTLED:    "nexthub.settlement.settled.v1",
   PARTICIPANT_STATUS:    "nexthub.participant.status.v1",
+  PARTICIPANT_ONBOARDED: "nexthub.participant.onboarded.v1",
+  DISPUTE_ESCALATED:     "nexthub.dispute.escalated.v1",
+  AML_FLAG:              "nexthub.aml.flag.v1",
 
   // Paygate → NextHub (consumed here)
   PAYGATE_AUDIT:         "paygate.audit.v1",
@@ -45,7 +51,8 @@ export interface TransferReceivedEvent {
   payeeFspId: string;
   amountKobo: number;
   currency: string;
-  state: string;
+  ilpPacket?: string;
+  condition?: string;
   timestamp: string;
 }
 
@@ -87,12 +94,43 @@ export interface NdcBreachEvent {
   timestamp: string;
 }
 
+export interface SettlementWindowOpenedEvent {
+  windowId: string;
+  windowType: string;
+  currency: string;
+  openedAt: string;
+}
+
 export interface SettlementClosedEvent {
   windowId: string;
   currency: string;
   totalTransfers: number;
   totalAmountKobo: number;
   closedAt: string;
+}
+
+export interface SettlementSettleEvent {
+  windowId: string;
+  currency: string;
+  totalAmountKobo: number;
+  netPositions: Array<{
+    dfspId: string;
+    dfspName: string;
+    netPositionKobo: number;
+    currency: string;
+  }>;
+  initiatedAt: string;
+}
+
+export interface AmlFlagEvent {
+  transferId: string;
+  payerFspId: string;
+  payeeFspId: string;
+  amountKobo: number;
+  currency: string;
+  matchedRules: string[];
+  fraudScore: number;
+  timestamp: string;
 }
 
 export interface SettlementSettledEvent {
@@ -204,14 +242,18 @@ export const nexthubPublish = {
   ndcBreach: (e: NdcBreachEvent) =>
     publishKafkaEvent(NEXTHUB_KAFKA_TOPICS.NDC_BREACH, e, e.dfspId),
 
+  settlementWindowOpened: (e: SettlementWindowOpenedEvent) =>
+    publishKafkaEvent(NEXTHUB_KAFKA_TOPICS.SETTLEMENT_OPENED, e, e.windowId),
   settlementClosed: (e: SettlementClosedEvent) =>
     publishKafkaEvent(NEXTHUB_KAFKA_TOPICS.SETTLEMENT_CLOSED, e, e.windowId),
-
+  settlementSettle: (e: SettlementSettleEvent) =>
+    publishKafkaEvent(NEXTHUB_KAFKA_TOPICS.SETTLEMENT_SETTLE, e, e.windowId),
   settlementSettled: (e: SettlementSettledEvent) =>
     publishKafkaEvent(NEXTHUB_KAFKA_TOPICS.SETTLEMENT_SETTLED, e, e.windowId),
-
   participantStatus: (e: ParticipantStatusEvent) =>
     publishKafkaEvent(NEXTHUB_KAFKA_TOPICS.PARTICIPANT_STATUS, e, e.dfspId),
+  amlFlag: (e: AmlFlagEvent) =>
+    publishKafkaEvent(NEXTHUB_KAFKA_TOPICS.AML_FLAG, e, e.transferId),
 };
 
 // ─── Graceful shutdown ────────────────────────────────────────────────────────

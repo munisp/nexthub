@@ -60,7 +60,7 @@ export default function NDCPositionLimitEditor() {
 
   const updateMutation = trpc.wave223.ndcPositionLimits.update.useMutation({
     onSuccess: () => { toast.success("Limits updated."); setEditingId(null); refetch(); },
-    onError: (e) => toast.error(e.message),
+    onError: (e: any) => toast.error(e.message),
   });
 
   // Real-time NDC breach SSE subscription

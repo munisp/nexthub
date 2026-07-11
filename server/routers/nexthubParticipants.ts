@@ -1,7 +1,7 @@
 // Wave 220: nexthubParticipants tRPC router
 // Participant lifecycle management, position limits, net debit cap, and liquidity windows
 import { z } from "zod";
-import { protectedProcedure, router } from "../_core/trpc";
+import { protectedProcedure, hubOperatorProcedure, router } from "../_core/trpc";
 import { db } from "../db";
 import { sql } from "drizzle-orm";
 
@@ -27,7 +27,7 @@ export const nexthubParticipantsRouter = router({
       const rows = await db.execute(sql.raw(`SELECT * FROM nexthub_participants ${where} ORDER BY created_at DESC LIMIT 200`));
       return rows.rows;
     }),
-  onboard: protectedProcedure
+  onboard: hubOperatorProcedure
     .input(z.object({
       name: z.string().min(2).max(100),
       dfspId: z.string().min(3).max(32),
@@ -40,13 +40,13 @@ export const nexthubParticipantsRouter = router({
       await db.execute(sql.raw(`INSERT INTO nexthub_participants (id, name, dfsp_id, currency, status, scheme_type, endpoint_url, created_at, updated_at) VALUES ('${id}', '${input.name}', '${input.dfspId}', '${input.currency}', 'PENDING', '${input.schemeType}', '${input.endpointUrl}', NOW(), NOW())`));
       return { participantId: id, status: "PENDING" };
     }),
-  suspend: protectedProcedure
+  suspend: hubOperatorProcedure
     .input(z.object({ participantId: z.string(), reason: z.string().min(5) }))
     .mutation(async ({ input }) => {
       await db.execute(sql.raw(`UPDATE nexthub_participants SET status = 'SUSPENDED', updated_at = NOW() WHERE id = '${input.participantId}'`));
       return { participantId: input.participantId, status: "SUSPENDED" };
     }),
-  activate: protectedProcedure
+  activate: hubOperatorProcedure
     .input(z.object({ participantId: z.string() }))
     .mutation(async ({ input }) => {
       await db.execute(sql.raw(`UPDATE nexthub_participants SET status = 'ACTIVE', updated_at = NOW() WHERE id = '${input.participantId}'`));
@@ -113,7 +113,7 @@ export const nexthubParticipantsRouter = router({
       return rows.rows[0];
     }),
 
-  onboardParticipant: protectedProcedure
+  onboardParticipant: hubOperatorProcedure
     .input(z.object({
       name: z.string().min(2).max(100),
       dfspId: z.string().min(3).max(32),
@@ -135,7 +135,7 @@ export const nexthubParticipantsRouter = router({
       return { participantId: id, status: "PENDING", message: "Participant onboarding initiated" };
     }),
 
-  suspendParticipant: protectedProcedure
+  suspendParticipant: hubOperatorProcedure
     .input(z.object({
       participantId: z.string(),
       reason: z.string().min(5),
@@ -149,7 +149,7 @@ export const nexthubParticipantsRouter = router({
       return { participantId: input.participantId, status: "SUSPENDED", reason: input.reason };
     }),
 
-  reactivateParticipant: protectedProcedure
+  reactivateParticipant: hubOperatorProcedure
     .input(z.object({ participantId: z.string() }))
     .mutation(async ({ input }) => {
       await db.execute(sql.raw(`

@@ -21,6 +21,12 @@
  *   [Fluvio]
  *   - Producers: ndc-breach-alerts, fx-rate-ticks, settlement-updates
  *   - Consumers: paygate-tx-stream
+ *
+ *   [Background Jobs]
+ *   - Billing overdue sweep (every 15 min)
+ *   - PISP consent expiry (every 5 min)
+ *   - Dispute SLA escalation (every 10 min)
+ *   - Settlement stale-OPEN scan (every 30 min)
  */
 
 import express from "express";
@@ -92,8 +98,8 @@ app.get("/{*path}", (_req, res) => {
 
 // ─── Start ────────────────────────────────────────────────────────────────────
 async function startServer() {
-  // 1. HTTP server
-  app.listen(PORT, () => {
+  // 1. HTTP server — capture the server handle for graceful drain
+  const httpServer = app.listen(PORT, () => {
     console.log(`[nexthub-core] HTTP server on port ${PORT}`);
     console.log(`[nexthub-core] tRPC:            http://localhost:${PORT}/api/trpc`);
     console.log(`[nexthub-core] REST API:         http://localhost:${PORT}/api/v1`);
@@ -128,15 +134,36 @@ async function startServer() {
     console.warn("[nexthub-core] Fluvio consumers failed to start:", e?.message);
   }
 
-  // 6. Graceful shutdown
+  // 6. Background jobs (billing overdue, PISP expiry, dispute SLA, settlement stale scan)
+  try {
+    const { startBackgroundJobs } = await import("../backgroundJobs");
+    startBackgroundJobs();
+  } catch (e: any) {
+    console.warn("[nexthub-core] Background jobs failed to start:", e?.message);
+  }
+
+  // 7. Graceful shutdown with HTTP connection drain
   const shutdown = async (signal: string) => {
-    console.log(`[nexthub-core] ${signal} received — shutting down`);
-    try {
-      const { disconnectKafkaProducer } = await import("../kafka/nexthubKafkaProducer");
-      await disconnectKafkaProducer();
-    } catch {}
-    process.exit(0);
+    console.log(`[nexthub-core] ${signal} received — draining HTTP connections`);
+
+    // Stop accepting new connections; wait for in-flight requests to finish
+    httpServer.close(async () => {
+      console.log("[nexthub-core] HTTP server drained — disconnecting Kafka");
+      try {
+        const { disconnectKafkaProducer } = await import("../kafka/nexthubKafkaProducer");
+        await disconnectKafkaProducer();
+      } catch {}
+      console.log("[nexthub-core] Shutdown complete");
+      process.exit(0);
+    });
+
+    // Force-exit after 30 s if drain takes too long
+    setTimeout(() => {
+      console.error("[nexthub-core] Graceful shutdown timed out — forcing exit");
+      process.exit(1);
+    }, 30_000);
   };
+
   process.on("SIGTERM", () => shutdown("SIGTERM"));
   process.on("SIGINT", () => shutdown("SIGINT"));
 }

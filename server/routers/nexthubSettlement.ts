@@ -8,7 +8,7 @@
  * the PostgreSQL operational projection and orchestrates the settlement workflow.
  */
 import { z } from "zod";
-import { protectedProcedure, router } from "../_core/trpc";
+import { protectedProcedure, hubOperatorProcedure, router } from "../_core/trpc";
 import { db } from "../db";
 import {
   settlementWindows,
@@ -16,8 +16,9 @@ import {
   nexthubTransfers,
   nexthubDfsps,
 } from "../../drizzle/nexthub_schema";
-import { eq, desc, sql, and, gte, lte } from "drizzle-orm";
+import { eq, desc, sql, and } from "drizzle-orm";
 import { TRPCError } from "@trpc/server";
+import { nexthubPublish } from "../kafka/nexthubKafkaProducer";
 
 // ─── Settlement Window Procedures ─────────────────────────────────────────────
 
@@ -82,7 +83,7 @@ export const nexthubSettlementRouter = router({
     }),
 
   /** Open a new settlement window */
-  openWindow: protectedProcedure
+  openWindow: hubOperatorProcedure
     .input(z.object({
       windowType: z.enum(["RTGS", "DNS_INTRADAY", "DNS_EOD"]),
       currency: z.string().default("NGN"),
@@ -112,11 +113,21 @@ export const nexthubSettlementRouter = router({
         openedAt: new Date(),
       }).returning();
 
+      // Publish Kafka event so downstream services know a window is open
+      nexthubPublish.settlementWindowOpened({
+        windowId: window.id,
+        windowType: window.windowType,
+        currency: window.currency,
+        openedAt: window.openedAt.toISOString(),
+      }).catch((err) =>
+        console.error("[settlement] Kafka publish (window.opened) failed:", err?.message),
+      );
+
       return window;
     }),
 
   /** Close a settlement window and compute net positions */
-  closeWindow: protectedProcedure
+  closeWindow: hubOperatorProcedure
     .input(z.object({ windowId: z.string() }))
     .mutation(async ({ input }) => {
 
@@ -130,78 +141,109 @@ export const nexthubSettlementRouter = router({
         throw new TRPCError({ code: "BAD_REQUEST", message: `Window is ${window.status}, not OPEN` });
       }
 
-      // Aggregate net positions per DFSP from nexthub_transfers in this window
-      const positions = await db
-        .select({
-          payerFspId: nexthubTransfers.payerFspId,
-          payeeFspId: nexthubTransfers.payeeFspId,
-          totalDebits: sql<number>`sum(case when payer_fsp_id = payer_fsp_id then amount_kobo else 0 end)::bigint`,
-          totalCredits: sql<number>`sum(case when payee_fsp_id = payee_fsp_id then amount_kobo else 0 end)::bigint`,
-          count: sql<number>`count(*)::int`,
-        })
-        .from(nexthubTransfers)
-        .where(and(
-          eq(nexthubTransfers.windowId, input.windowId),
-          eq(nexthubTransfers.state, "COMMITTED"),
-        ))
-        .groupBy(nexthubTransfers.payerFspId, nexthubTransfers.payeeFspId);
+      // ── FIXED: correct per-DFSP debit/credit aggregation using CTEs ─────
+      // The original code had `payer_fsp_id = payer_fsp_id` (always true).
+      // This version uses proper CTEs to separately aggregate debits and credits.
+      const rawRows = await db.execute<{
+        dfspId: string;
+        totalDebitsKobo: string;
+        totalCreditsKobo: string;
+        transferCount: string;
+      }>(sql`
+        WITH
+          debits AS (
+            SELECT payer_fsp_id AS dfsp_id,
+                   SUM(amount_kobo) AS total_debits,
+                   COUNT(*) AS transfer_count
+            FROM nexthub_transfers
+            WHERE window_id = ${input.windowId} AND state = 'COMMITTED'
+            GROUP BY payer_fsp_id
+          ),
+          credits AS (
+            SELECT payee_fsp_id AS dfsp_id,
+                   SUM(amount_kobo) AS total_credits,
+                   COUNT(*) AS transfer_count
+            FROM nexthub_transfers
+            WHERE window_id = ${input.windowId} AND state = 'COMMITTED'
+            GROUP BY payee_fsp_id
+          ),
+          all_dfsps AS (
+            SELECT dfsp_id FROM debits UNION SELECT dfsp_id FROM credits
+          )
+        SELECT
+          a.dfsp_id                                        AS "dfspId",
+          COALESCE(d.total_debits,  0)::bigint             AS "totalDebitsKobo",
+          COALESCE(c.total_credits, 0)::bigint             AS "totalCreditsKobo",
+          (COALESCE(d.transfer_count, 0) + COALESCE(c.transfer_count, 0))::int AS "transferCount"
+        FROM all_dfsps a
+        LEFT JOIN debits  d ON d.dfsp_id = a.dfsp_id
+        LEFT JOIN credits c ON c.dfsp_id = a.dfsp_id
+        ORDER BY a.dfsp_id
+      `);
 
-      // Build per-DFSP net position map
-      const netMap = new Map<string, { debits: number; credits: number; count: number }>();
-      for (const p of positions) {
-        const debit = netMap.get(p.payerFspId) ?? { debits: 0, credits: 0, count: 0 };
-        debit.debits += p.totalDebits ?? 0;
-        debit.count += p.count ?? 0;
-        netMap.set(p.payerFspId, debit);
-
-        const credit = netMap.get(p.payeeFspId) ?? { debits: 0, credits: 0, count: 0 };
-        credit.credits += p.totalCredits ?? 0;
-        netMap.set(p.payeeFspId, credit);
-      }
-
-      // Fetch DFSP names
-      const dfspIds = Array.from(netMap.keys());
+      const rows = rawRows.rows;
+      const dfspIds = rows.map((r) => r.dfspId);
       const dfsps = dfspIds.length > 0
         ? await db.select({ dfspId: nexthubDfsps.dfspId, dfspName: nexthubDfsps.dfspName })
-            .from(nexthubDfsps)
-            .where(sql`dfsp_id = ANY(${dfspIds})`)
+            .from(nexthubDfsps).where(sql`dfsp_id = ANY(${dfspIds})`)
         : [];
-      const dfspNameMap = new Map(dfsps.map(d => [d.dfspId, d.dfspName]));
+      const dfspNameMap = new Map(dfsps.map((d) => [d.dfspId, d.dfspName]));
 
-      // Insert net positions
-      const netPositionRows = Array.from(netMap.entries()).map(([dfspId, pos]) => ({
+      const netPositionRows = rows.map((r) => ({
         windowId: input.windowId,
-        dfspId,
-        dfspName: dfspNameMap.get(dfspId) ?? dfspId,
+        dfspId: r.dfspId,
+        dfspName: dfspNameMap.get(r.dfspId) ?? r.dfspId,
         currency: window.currency,
-        totalDebitsKobo: pos.debits,
-        totalCreditsKobo: pos.credits,
-        netPositionKobo: pos.credits - pos.debits,
-        transferCount: pos.count,
+        totalDebitsKobo: Number(r.totalDebitsKobo),
+        totalCreditsKobo: Number(r.totalCreditsKobo),
+        netPositionKobo: Number(r.totalCreditsKobo) - Number(r.totalDebitsKobo),
+        transferCount: Number(r.transferCount),
       }));
 
-      if (netPositionRows.length > 0) {
-        await db.insert(settlementNetPositions).values(netPositionRows);
-      }
+      const totalTransfers = netPositionRows.reduce((s, p) => s + p.transferCount, 0);
+      const totalAmountKobo = netPositionRows.reduce((s, p) => s + Math.abs(p.netPositionKobo), 0);
 
-      const totalAmount = netPositionRows.reduce((sum, p) => sum + Math.abs(p.netPositionKobo), 0);
+      // ── Wrap in DB transaction (atomicity) ────────────────────────────────
+      const updated = await db.transaction(async (tx) => {
+        // Re-check status inside transaction (optimistic lock)
+        const [current] = await tx
+          .select({ status: settlementWindows.status })
+          .from(settlementWindows)
+          .where(eq(settlementWindows.id, input.windowId))
+          .limit(1);
+        if (current?.status !== "OPEN") {
+          throw new TRPCError({
+            code: "CONFLICT",
+            message: `Window was concurrently modified (status: ${current?.status})`,
+          });
+        }
+        if (netPositionRows.length > 0) {
+          await tx.insert(settlementNetPositions).values(netPositionRows);
+        }
+        const [win] = await tx
+          .update(settlementWindows)
+          .set({ status: "CLOSED", closedAt: new Date(), totalTransfers, totalAmountKobo, updatedAt: new Date() })
+          .where(eq(settlementWindows.id, input.windowId))
+          .returning();
+        return win;
+      });
 
-      const [updated] = await db.update(settlementWindows)
-        .set({
-          status: "CLOSED",
-          closedAt: new Date(),
-          totalTransfers: netPositionRows.reduce((sum, p) => sum + p.transferCount, 0),
-          totalAmountKobo: totalAmount,
-          updatedAt: new Date(),
-        })
-        .where(eq(settlementWindows.id, input.windowId))
-        .returning();
+      // Publish Kafka event (fire-and-forget, outside transaction)
+      nexthubPublish.settlementClosed({
+        windowId: updated.id,
+        currency: updated.currency,
+        totalTransfers: updated.totalTransfers,
+        totalAmountKobo: updated.totalAmountKobo,
+        closedAt: (updated.closedAt ?? new Date()).toISOString(),
+      }).catch((err) =>
+        console.error("[settlement] Kafka publish (window.closed) failed:", err?.message),
+      );
 
       return { window: updated, netPositions: netPositionRows };
     }),
 
   /** Trigger settlement for a closed window (posts to TigerBeetle + CBN rail) */
-  settleWindow: protectedProcedure
+  settleWindow: hubOperatorProcedure
     .input(z.object({ windowId: z.string() }))
     .mutation(async ({ input }) => {
 
@@ -215,21 +257,40 @@ export const nexthubSettlementRouter = router({
         throw new TRPCError({ code: "BAD_REQUEST", message: `Window must be CLOSED to settle (current: ${window.status})` });
       }
 
-      // Mark as SETTLING — TigerBeetle batch posting happens asynchronously
-      // via the Rust nexthub-settlement service consuming the Fluvio topic
-      const [updated] = await db.update(settlementWindows)
+      // Mark as SETTLING with optimistic lock (only if still CLOSED)
+      const [updated] = await db
+        .update(settlementWindows)
         .set({ status: "SETTLING", updatedAt: new Date() })
-        .where(eq(settlementWindows.id, input.windowId))
+        .where(and(eq(settlementWindows.id, input.windowId), eq(settlementWindows.status, "CLOSED")))
         .returning();
 
-      // In production: publish nexthub.settlement.window.settle event to Fluvio
-      // The Rust nexthub-settlement service will:
-      // 1. lookup_accounts for all DFSP positions
-      // 2. create_transfers for all net positions (linked chain)
-      // 3. publish nexthub.settlement.window.settled when complete
-      // 4. tRPC webhook updates status to SETTLED
+      if (!updated) {
+        throw new TRPCError({ code: "CONFLICT", message: "Window was concurrently modified — please retry" });
+      }
 
-      return { window: updated, message: "Settlement initiated — TigerBeetle batch posting in progress" };
+      // Fetch net positions for Kafka payload
+      const positions = await db
+        .select()
+        .from(settlementNetPositions)
+        .where(eq(settlementNetPositions.windowId, input.windowId));
+
+      // Publish nexthub.settlement.window.settle — Rust settlement service consumes this
+      nexthubPublish.settlementSettle({
+        windowId: updated.id,
+        currency: updated.currency,
+        totalAmountKobo: updated.totalAmountKobo,
+        netPositions: positions.map((p) => ({
+          dfspId: p.dfspId,
+          dfspName: p.dfspName,
+          netPositionKobo: p.netPositionKobo,
+          currency: p.currency,
+        })),
+        initiatedAt: new Date().toISOString(),
+      }).catch((err) =>
+        console.error("[settlement] Kafka publish (window.settle) failed:", err?.message),
+      );
+
+      return { window: updated, message: "Settlement initiated — TigerBeetle batch posting in progress via Rust settlement service" };
     }),
 
   /** Get settlement statistics for the dashboard */

@@ -5,7 +5,7 @@
  * TigerBeetle account provisioning, and liquidity limits.
  */
 import { z } from "zod";
-import { protectedProcedure, router } from "../_core/trpc";
+import { protectedProcedure, hubOperatorProcedure, router } from "../_core/trpc";
 import { db } from "../db";
 import { nexthubDfsps, dfspFeeTiers } from "../../drizzle/nexthub_schema";
 import { eq, desc, sql, and, ilike } from "drizzle-orm";

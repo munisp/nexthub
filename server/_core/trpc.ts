@@ -250,3 +250,20 @@ export const tenantProcedure = t.procedure.use(loggingMiddleware).use(
     });
   }),
 );
+
+// ─── hubOperatorProcedure ─────────────────────────────────────────────────────
+// Requires role === 'admin'. Used for critical hub mutations:
+// settlement window open/close/settle, participant onboard/suspend/activate,
+// FX rate publish, NDC limit changes.
+export const hubOperatorProcedure = protectedProcedure.use(
+  t.middleware(async opts => {
+    const { ctx, next } = opts;
+    if (!ctx.user || ctx.user.role !== 'admin') {
+      throw new TRPCError({
+        code: 'FORBIDDEN',
+        message: 'Hub operator role required for this action',
+      });
+    }
+    return next({ ctx });
+  }),
+);

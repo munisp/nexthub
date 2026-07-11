@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { protectedProcedure, router } from "../_core/trpc";
+import { protectedProcedure, hubOperatorProcedure, router } from "../_core/trpc";
 import { db } from "../db";
 import { nexthubFxRates } from "../../drizzle/nexthub_schema";
 import { eq, and, gte, lte, desc } from "drizzle-orm";
@@ -58,7 +58,7 @@ export const nexthubFXRouter = router({
     }),
 
   // Publish a new FX rate (from FX provider bridge)
-  publishRate: protectedProcedure
+  publishRate: hubOperatorProcedure
     .input(z.object({
       sourceCurrency: z.string().length(3),
       targetCurrency: z.string().length(3),

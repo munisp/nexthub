@@ -6,7 +6,7 @@
  * Outcomes: UPHELD (reversal + TigerBeetle), REJECTED (penalty billing), ESCALATED.
  */
 import { z } from "zod";
-import { protectedProcedure, router } from "../_core/trpc";
+import { protectedProcedure, hubOperatorProcedure, router } from "../_core/trpc";
 import { db } from "../db";
 import { transferDisputes, feePostings } from "../../drizzle/nexthub_schema";
 import { eq, desc, sql, and } from "drizzle-orm";

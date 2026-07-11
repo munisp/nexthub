@@ -7,7 +7,7 @@
  * bulkTransfers, dfspTopology
  */
 import { z } from "zod";
-import { router, protectedProcedure } from "../_core/trpc";
+import { router, protectedProcedure, hubOperatorProcedure } from "../_core/trpc";
 import { db } from "../db";
 import { sql, eq, desc, and, gte, lte } from "drizzle-orm";
 import {
@@ -38,7 +38,7 @@ const auditLogsRouter = router({
       fromDate: z.string().optional(),
       toDate: z.string().optional(),
     }))
-    .query(async ({ input }) => {
+    .query(async ({ input }: { input: any }) => {
       const conditions: any[] = [];
       if (input.action) conditions.push(eq(auditLogs.action, input.action));
       if (input.actor) conditions.push(eq(auditLogs.userId, input.actor));
@@ -57,8 +57,8 @@ const auditLogsRouter = router({
 const revenueAnalyticsRouter = router({
   getSummary: protectedProcedure
     .input(z.object({ period: z.enum(["7d", "30d", "90d", "1y"]).default("30d") }))
-    .query(async ({ input }) => {
-      const days = { "7d": 7, "30d": 30, "90d": 90, "1y": 365 }[input.period];
+    .query(async ({ input }: { input: any }) => {
+      const days = ({ "7d": 7, "30d": 30, "90d": 90, "1y": 365 } as Record<string, number>)[input.period as string];
       const since = new Date(Date.now() - days * 86400_000);
       const result = await db.execute(sql`
         SELECT
@@ -81,8 +81,8 @@ const revenueAnalyticsRouter = router({
     }),
   getBreakdown: protectedProcedure
     .input(z.object({ period: z.enum(["7d", "30d", "90d", "1y"]).default("30d"), groupBy: z.enum(["day", "week", "month"]).default("day") }))
-    .query(async ({ input }) => {
-      const days = { "7d": 7, "30d": 30, "90d": 90, "1y": 365 }[input.period];
+    .query(async ({ input }: { input: any }) => {
+      const days = ({ "7d": 7, "30d": 30, "90d": 90, "1y": 365 } as Record<string, number>)[input.period as string];
       const since = new Date(Date.now() - days * 86400_000);
       const result = await db.execute(sql`
         SELECT DATE_TRUNC(${input.groupBy}, created_at) AS period,
@@ -97,8 +97,8 @@ const revenueAnalyticsRouter = router({
     }),
   getTopMerchants: protectedProcedure
     .input(z.object({ period: z.enum(["7d", "30d", "90d", "1y"]).default("30d"), limit: z.number().min(1).max(50).default(10) }))
-    .query(async ({ input }) => {
-      const days = { "7d": 7, "30d": 30, "90d": 90, "1y": 365 }[input.period];
+    .query(async ({ input }: { input: any }) => {
+      const days = ({ "7d": 7, "30d": 30, "90d": 90, "1y": 365 } as Record<string, number>)[input.period as string];
       const since = new Date(Date.now() - days * 86400_000);
       const result = await db.execute(sql`
         SELECT t.merchant_id, m.business_name,
@@ -120,7 +120,7 @@ const revenueAnalyticsRouter = router({
 const fxRatesRouter = router({
   list: protectedProcedure
     .input(z.object({ baseCurrency: z.string().optional(), quoteCurrency: z.string().optional() }))
-    .query(async ({ input }) => {
+    .query(async ({ input }: { input: any }) => {
       const conditions: any[] = [];
       if (input.baseCurrency) conditions.push(eq(fxRates.baseCurrency, input.baseCurrency));
       if (input.quoteCurrency) conditions.push(eq(fxRates.targetCurrency, input.quoteCurrency));
@@ -135,7 +135,7 @@ const fxRatesRouter = router({
       rate: z.number().positive(),
       source: z.string().default("manual"),
     }))
-    .mutation(async ({ input }) => {
+    .mutation(async ({ input }: { input: any }) => {
       const [row] = await db.insert(fxRates).values({
         baseCurrency: input.baseCurrency,
         targetCurrency: input.quoteCurrency,
@@ -145,9 +145,9 @@ const fxRatesRouter = router({
       }).returning();
       return row;
     }),
-  update: protectedProcedure
+  update: hubOperatorProcedure
     .input(z.object({ id: z.number(), rate: z.number().positive() }))
-    .mutation(async ({ input }) => {
+    .mutation(async ({ input }: { input: any }) => {
       const [row] = await db.update(fxRates).set({ rate: String(input.rate), fetchedAt: new Date() })
         .where(eq(fxRates.id, input.id)).returning();
       return row;
@@ -158,14 +158,14 @@ const fxRatesRouter = router({
 const apiRateLimitsRouter = router({
   list: protectedProcedure
     .input(z.object({ merchantId: z.string().optional() }))
-    .query(async ({ input }) => {
+    .query(async ({ input }: { input: any }) => {
       const conditions: any[] = [];
       if (input.merchantId) conditions.push(eq(apiRateLimitRules.merchantId, input.merchantId));
       return db.select().from(apiRateLimitRules)
         .where(conditions.length ? and(...conditions) : undefined)
         .orderBy(desc(apiRateLimitRules.createdAt));
     }),
-  update: protectedProcedure
+  update: hubOperatorProcedure
     .input(z.object({
       id: z.string(),
       limitPerMinute: z.number().int().positive().optional(),
@@ -173,7 +173,7 @@ const apiRateLimitsRouter = router({
       limitPerDay: z.number().int().positive().optional(),
       isActive: z.boolean().optional(),
     }))
-    .mutation(async ({ input }) => {
+    .mutation(async ({ input }: { input: any }) => {
       const { id, ...rest } = input;
       const [row] = await db.update(apiRateLimitRules)
         .set({ ...rest, updatedAt: new Date() } as any)
@@ -182,7 +182,7 @@ const apiRateLimitsRouter = router({
     }),
   getUsage: protectedProcedure
     .input(z.object({ merchantId: z.string().optional() }))
-    .query(async ({ input }) => {
+    .query(async ({ input }: { input: any }) => {
       const since = new Date(Date.now() - 60_000);
       const result = await db.execute(sql`
         SELECT resource AS endpoint, COUNT(*) AS requests_last_minute
@@ -200,7 +200,7 @@ const apiRateLimitsRouter = router({
 const notificationPreferencesRouter = router({
   get: protectedProcedure
     .input(z.object({ merchantId: z.string() }))
-    .query(async ({ input }) => {
+    .query(async ({ input }: { input: any }) => {
       const [row] = await db.select().from(realtimeNotificationPreferences)
         .where(eq(realtimeNotificationPreferences.merchantId, input.merchantId));
       return row ?? null;
@@ -214,7 +214,7 @@ const notificationPreferencesRouter = router({
       webhookEnabled: z.boolean().default(false),
       digestFrequency: z.enum(["realtime", "hourly", "daily", "weekly"]).default("realtime"),
     }))
-    .mutation(async ({ input }) => {
+    .mutation(async ({ input }: { input: any }) => {
       const existing = await db.select().from(realtimeNotificationPreferences)
         .where(eq(realtimeNotificationPreferences.merchantId, input.merchantId));
       const values = {
@@ -243,7 +243,7 @@ const notificationPreferencesRouter = router({
 const posTerminalsRouter = router({
   list: protectedProcedure
     .input(z.object({ merchantId: z.string().optional(), status: z.string().optional() }))
-    .query(async ({ input }) => {
+    .query(async ({ input }: { input: any }) => {
       const conditions: any[] = [];
       if (input.merchantId) conditions.push(eq(posTerminals.merchantId, input.merchantId));
       if (input.status) conditions.push(eq(posTerminals.status, input.status as any));
@@ -259,7 +259,7 @@ const posTerminalsRouter = router({
       label: z.string().optional(),
       location: z.string().optional(),
     }))
-    .mutation(async ({ input }) => {
+    .mutation(async ({ input }: { input: any }) => {
       const id = `pos_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
       const [row] = await db.insert(posTerminals).values({
         id,
@@ -276,7 +276,7 @@ const posTerminalsRouter = router({
     }),
   delete: protectedProcedure
     .input(z.object({ id: z.string() }))
-    .mutation(async ({ input }) => {
+    .mutation(async ({ input }: { input: any }) => {
       await db.delete(posTerminals).where(eq(posTerminals.id, input.id));
       return { success: true };
     }),
@@ -286,7 +286,7 @@ const posTerminalsRouter = router({
 const settlementBanksExtRouter = router({
   list: protectedProcedure
     .input(z.object({ status: z.string().optional() }))
-    .query(async ({ input }) => {
+    .query(async ({ input }: { input: any }) => {
       const conditions: any[] = [];
       if (input.status) conditions.push(eq(settlementBanks.status, input.status));
       return db.select().from(settlementBanks)
@@ -306,7 +306,7 @@ const settlementBanksExtRouter = router({
       isRtgsEnabled: z.boolean().default(false),
       isNipEnabled: z.boolean().default(true),
     }))
-    .mutation(async ({ input }) => {
+    .mutation(async ({ input }: { input: any }) => {
       const id = `sb_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
       const [row] = await db.insert(settlementBanks).values({
         id, ...input, status: "active", createdAt: new Date(), updatedAt: new Date(),
@@ -315,7 +315,7 @@ const settlementBanksExtRouter = router({
     }),
   setStatus: protectedProcedure
     .input(z.object({ id: z.string(), status: z.enum(["active", "inactive", "suspended"]) }))
-    .mutation(async ({ input }) => {
+    .mutation(async ({ input }: { input: any }) => {
       const [row] = await db.update(settlementBanks)
         .set({ status: input.status, updatedAt: new Date() } as any)
         .where(eq(settlementBanks.id, input.id)).returning();
@@ -323,7 +323,7 @@ const settlementBanksExtRouter = router({
     }),
   delete: protectedProcedure
     .input(z.object({ id: z.string() }))
-    .mutation(async ({ input }) => {
+    .mutation(async ({ input }: { input: any }) => {
       await db.delete(settlementBanks).where(eq(settlementBanks.id, input.id));
       return { success: true };
     }),
@@ -333,7 +333,7 @@ const settlementBanksExtRouter = router({
 export const kycDocumentsRouter = router({
   list: protectedProcedure
     .input(z.object({ merchantId: z.string().optional(), documentType: z.string().optional() }))
-    .query(async ({ input }) => {
+    .query(async ({ input }: { input: any }) => {
       const conditions: any[] = [];
       if (input.merchantId) conditions.push(eq(kybDocuments.merchantId, input.merchantId));
       if (input.documentType) conditions.push(eq(kybDocuments.documentType, input.documentType));
@@ -350,7 +350,7 @@ export const kycDocumentsRouter = router({
       mimeType: z.string().default("application/pdf"),
       verificationId: z.string().optional(),
     }))
-    .mutation(async ({ input }) => {
+    .mutation(async ({ input }: { input: any }) => {
       const buffer = Buffer.from(input.fileBase64, "base64");
       const fileKey = `kyc/${input.merchantId}/${input.documentType}/${Date.now()}-${input.fileName}`;
       const { url } = await storagePut(fileKey, buffer, input.mimeType);
@@ -368,7 +368,7 @@ export const kycDocumentsRouter = router({
     }),
   delete: protectedProcedure
     .input(z.object({ id: z.string() }))
-    .mutation(async ({ input }) => {
+    .mutation(async ({ input }: { input: any }) => {
       await db.delete(kybDocuments).where(eq(kybDocuments.id, input.id));
       return { success: true };
     }),
@@ -378,7 +378,7 @@ export const kycDocumentsRouter = router({
 export const merchantVerificationRouter = router({
   list: protectedProcedure
     .input(z.object({ status: z.string().optional(), limit: z.number().default(50), offset: z.number().default(0) }))
-    .query(async ({ input }) => {
+    .query(async ({ input }: { input: any }) => {
       const conditions: any[] = [];
       if (input.status) conditions.push(eq(kybVerifications.status, input.status));
       const where = conditions.length ? and(...conditions) : undefined;
@@ -389,7 +389,7 @@ export const merchantVerificationRouter = router({
     }),
   startReview: protectedProcedure
     .input(z.object({ id: z.string(), reviewerId: z.string() }))
-    .mutation(async ({ input }) => {
+    .mutation(async ({ input }: { input: any }) => {
       const [row] = await db.update(kybVerifications)
         .set({ status: "in_review", initiatedBy: input.reviewerId, updatedAt: new Date() } as any)
         .where(eq(kybVerifications.verificationId, input.id)).returning();
@@ -397,7 +397,7 @@ export const merchantVerificationRouter = router({
     }),
   approve: protectedProcedure
     .input(z.object({ id: z.string(), reviewerId: z.string(), notes: z.string().optional() }))
-    .mutation(async ({ input }) => {
+    .mutation(async ({ input }: { input: any }) => {
       const [row] = await db.update(kybVerifications)
         .set({ status: "approved", initiatedBy: input.reviewerId, updatedAt: new Date() } as any)
         .where(eq(kybVerifications.verificationId, input.id)).returning();
@@ -406,7 +406,7 @@ export const merchantVerificationRouter = router({
     }),
   reject: protectedProcedure
     .input(z.object({ id: z.string(), reviewerId: z.string(), reason: z.string() }))
-    .mutation(async ({ input }) => {
+    .mutation(async ({ input }: { input: any }) => {
       const [row] = await db.update(kybVerifications)
         .set({ status: "rejected", initiatedBy: input.reviewerId, updatedAt: new Date() } as any)
         .where(eq(kybVerifications.verificationId, input.id)).returning();
@@ -419,14 +419,14 @@ export const merchantVerificationRouter = router({
 export const ndcPositionLimitsRouter = router({
   list: protectedProcedure
     .input(z.object({ participantId: z.string().optional() }))
-    .query(async ({ input }) => {
+    .query(async ({ input }: { input: any }) => {
       const conditions: any[] = [];
       if (input.participantId) conditions.push(eq(nexthubParticipantLimits.participantId, input.participantId));
       return db.select().from(nexthubParticipantLimits)
         .where(conditions.length ? and(...conditions) : undefined)
         .orderBy(desc(nexthubParticipantLimits.updatedAt));
     }),
-  update: protectedProcedure
+  update: hubOperatorProcedure
     .input(z.object({
       id: z.string(),
       netDebitCap: z.number().positive().optional(),
@@ -435,7 +435,7 @@ export const ndcPositionLimitsRouter = router({
       alertThreshold: z.number().min(0).max(1).optional(),
       currency: z.string().optional(),
     }))
-    .mutation(async ({ input }) => {
+    .mutation(async ({ input }: { input: any }) => {
       const { id, ...rest } = input;
       const [row] = await db.update(nexthubParticipantLimits)
         .set({ ...rest, updatedAt: new Date() } as any)
@@ -458,13 +458,13 @@ export const bulkTransfersRouter = router({
         narration: z.string().optional(),
       })),
     }))
-    .mutation(async ({ input }) => {
+    .mutation(async ({ input }: { input: any }) => {
       const errors: { row: number; message: string }[] = [];
-      input.transfers.forEach((t, i) => {
+      input.transfers.forEach((t: any, i: number) => {
         if (!t.beneficiaryAccount.match(/^\d{10}$/)) errors.push({ row: i + 1, message: `Row ${i + 1}: Account must be 10 digits` });
         if (t.amount < 100) errors.push({ row: i + 1, message: `Row ${i + 1}: Amount below minimum (₦1)` });
       });
-      return { valid: errors.length === 0, errors, totalAmount: input.transfers.reduce((s, t) => s + t.amount, 0), count: input.transfers.length };
+      return { valid: errors.length === 0, errors, totalAmount: input.transfers.reduce((s: number, t: any) => s + t.amount, 0), count: input.transfers.length };
     }),
   submit: protectedProcedure
     .input(z.object({
@@ -480,7 +480,7 @@ export const bulkTransfersRouter = router({
         narration: z.string().optional(),
       })),
     }))
-    .mutation(async ({ input }) => {
+    .mutation(async ({ input }: { input: any }) => {
       const batchId = `BULK-${Date.now()}-${Math.random().toString(36).slice(2, 6).toUpperCase()}`;
       await notifyOwner({ title: "Bulk Transfer Submitted", content: `Batch "${input.batchName}" (${batchId}) with ${input.transfers.length} transfers submitted.` });
       return { batchId, status: "queued", count: input.transfers.length };

@@ -26,15 +26,21 @@ import {
   nipNameEnquiry,
   nipFundTransfer,
   nipTransactionStatus,
-  nqrGenerateQr,
-  nqrVerifyPayment,
   neftSubmitBatch,
   rtgsTransfer,
   bvnValidate,
   getAllBanks,
   getBankByNipCode,
 } from "../nibss/nibssGateway";
+import {
+  generateNqr,
+  generateStaticMerchantQr,
+  getNqrStatus,
+} from "../nibss/nqrService";
+import { nqrTransactions } from "../../drizzle/nqr_schema";
+import { desc } from "drizzle-orm";
 import { publishKafkaEvent, NEXTHUB_KAFKA_TOPICS } from "../kafka/nexthubKafkaProducer";
+import { cache, TTL } from "../cache";
 import { logger } from "../logger";
 
 export const nibssNipRouter = router({
@@ -143,25 +149,84 @@ export const nibssNipRouter = router({
     .input(z.object({ sessionId: z.string() }))
     .query(({ input }) => nipTransactionStatus(input.sessionId)),
 
-  // ── NQR QR Code Generation ──────────────────────────────────────────────────
-  nqrGenerate: protectedProcedure
+  // ── NQR Dynamic QR Code Generation (EMVCo TLV, local render) ─────────────────
+  nqrGenerate: hubOperatorProcedure
+    .input(z.object({
+      merchantId:    z.string().min(1).max(50),
+      merchantName:  z.string().min(1).max(25),
+      bankCode:      z.string().length(3),
+      accountNumber: z.string().length(10),
+      amountKobo:    z.number().int().min(100).optional(),
+      reference:     z.string().min(1).max(25),
+      expiryMinutes: z.number().int().min(1).max(1440).default(30),
+    }))
+    .mutation(async ({ input, ctx }) => {
+      return generateNqr({
+        merchantId:    input.merchantId,
+        merchantName:  input.merchantName,
+        bankCode:      input.bankCode,
+        accountNumber: input.accountNumber,
+        amountKobo:    input.amountKobo,
+        reference:     input.reference,
+        expiryMinutes: input.expiryMinutes,
+        tenantId:      String(ctx.user!.id),
+      });
+    }),
+
+  // ── NQR Static Merchant QR (open amount, persistent) ─────────────────────────
+  nqrGenerateStatic: hubOperatorProcedure
+    .input(z.object({
+      merchantId:    z.string().min(1).max(50),
+      merchantName:  z.string().min(1).max(25),
+      bankCode:      z.string().length(3),
+      accountNumber: z.string().length(10),
+    }))
+    .mutation(async ({ input, ctx }) => {
+      return generateStaticMerchantQr({
+        merchantId:    input.merchantId,
+        merchantName:  input.merchantName,
+        bankCode:      input.bankCode,
+        accountNumber: input.accountNumber,
+        tenantId:      String(ctx.user!.id),
+      });
+    }),
+
+  // ── NQR Payment Status (Redis cache → DB, no NIBSS round-trip) ───────────────
+  nqrStatus: protectedProcedure
+    .input(z.object({ reference: z.string() }))
+    .query(async ({ input }) => {
+      const status = await getNqrStatus(input.reference);
+      if (!status) throw new (await import("@trpc/server")).TRPCError({ code: "NOT_FOUND", message: `NQR ${input.reference} not found` });
+      return status;
+    }),
+
+  // ── NQR Merchant Transaction List (cursor-paginated) ─────────────────────────
+  nqrMerchantList: protectedProcedure
     .input(z.object({
       merchantId: z.string(),
-      merchantName: z.string(),
-      amountKobo: z.number().int().optional(),
-      reference: z.string(),
+      status:     z.enum(["PENDING", "PAID", "EXPIRED", "CANCELLED", "ALL"]).default("ALL"),
+      limit:      z.number().int().min(1).max(100).default(50),
     }))
-    .mutation(({ input }) => nqrGenerateQr({
-      merchantId: input.merchantId,
-      merchantName: input.merchantName,
-      amount: input.amountKobo,
-      reference: input.reference,
-    })),
-
-  // ── NQR Payment Verification ────────────────────────────────────────────────
-  nqrVerify: protectedProcedure
-    .input(z.object({ reference: z.string() }))
-    .query(({ input }) => nqrVerifyPayment(input.reference)),
+    .query(async ({ input }) => {
+      const conditions = [eq(nqrTransactions.merchantId, input.merchantId)];
+      if (input.status !== "ALL") conditions.push(eq(nqrTransactions.status, input.status));
+      const rows = await db
+        .select({
+          id:             nqrTransactions.id,
+          reference:      nqrTransactions.reference,
+          amountKobo:     nqrTransactions.amountKobo,
+          paidAmountKobo: nqrTransactions.paidAmountKobo,
+          status:         nqrTransactions.status,
+          qrType:         nqrTransactions.qrType,
+          expiresAt:      nqrTransactions.expiresAt,
+          createdAt:      nqrTransactions.createdAt,
+        })
+        .from(nqrTransactions)
+        .where(and(...conditions))
+        .orderBy(desc(nqrTransactions.createdAt))
+        .limit(input.limit);
+      return rows;
+    }),
 
   // ── NEFT Batch Submission ───────────────────────────────────────────────────
   neftBatch: hubOperatorProcedure

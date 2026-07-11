@@ -29,6 +29,14 @@ export const TTL = {
   IDEMPOTENCY: 86_400,
   /** Fraud score cache — 5 minutes */
   FRAUD_SCORE: 300,
+  /** NQR pending status — 30 minutes (matches QR expiry) */
+  NQR_PENDING: 1_800,
+  /** Settlement window list — 30 seconds */
+  SETTLEMENT_WINDOWS: 30,
+  /** Participant list — 60 seconds */
+  PARTICIPANTS: 60,
+  /** FX rate list — 5 minutes */
+  FX_RATE_LIST: 300,
 } as const;
 
 // ─── Cache namespace keys ─────────────────────────────────────────────────────
@@ -38,7 +46,11 @@ export type CacheNamespace =
   | "nip:account"
   | "merchant:profile"
   | "idempotency"
-  | "fraud:score";
+  | "fraud:score"
+  | "nqr:status"
+  | "nexthub:settlement_windows"
+  | "nexthub:participants"
+  | "nexthub:fx_rates";
 
 // ─── Cache interface ──────────────────────────────────────────────────────────
 interface CacheStore {

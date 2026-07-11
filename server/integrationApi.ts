@@ -37,6 +37,8 @@ import {
 import { eq, desc, and, gte, lte, sql } from "drizzle-orm";
 import { nexthubPublish } from "./kafka/nexthubKafkaProducer";
 
+import { handleNqrWebhook, registerNqrSseClient } from "./nibss/nqrService";
+import { logger } from "./logger";
 // ─── Rate limiters ────────────────────────────────────────────────────────────
 
 const globalLimiter = rateLimit({
@@ -638,6 +640,57 @@ export function createIntegrationRouter(): Router {
       res.status(500).json({ error: "Internal error", detail: err?.message, correlationId });
     }
   });
+
+
+// ─── NQR Webhook (NIBSS pushes payment notifications here) ────────────────────
+router.post("/nqr/webhook", async (req, res) => {
+  try {
+    const { reference, responseCode, amount, sessionID, payerAccountNo, payerBankCode, transactionDate } = req.body;
+    if (!reference || !responseCode) {
+      return res.status(400).json({ error: "Missing required fields: reference, responseCode" });
+    }
+    await handleNqrWebhook({
+      reference,
+      responseCode,
+      amount: Number(amount) || 0,
+      sessionID: sessionID ?? "",
+      payerAccountNo: payerAccountNo ?? "",
+      payerBankCode: payerBankCode ?? "",
+      transactionDate: transactionDate ?? new Date().toISOString(),
+    });
+    logger.info("nqr_webhook_processed", { reference, responseCode });
+    return res.json({ status: "OK" });
+  } catch (err: any) {
+    logger.error("nqr_webhook_error", { err: err?.message });
+    return res.status(500).json({ error: "Webhook processing failed" });
+  }
+});
+
+// ─── NQR SSE Status Stream (real-time payment status push) ────────────────────
+// Client connects: GET /api/v1/nqr/status-stream/:reference
+// Server pushes: { reference, status, paidAmountKobo?, nibssSessionId? }
+// Connection closes automatically when status becomes PAID/EXPIRED/CANCELLED
+router.get("/nqr/status-stream/:reference", (req, res) => {
+  const { reference } = req.params;
+  res.setHeader("Content-Type", "text/event-stream");
+  res.setHeader("Cache-Control", "no-cache");
+  res.setHeader("Connection", "keep-alive");
+  res.setHeader("X-Accel-Buffering", "no"); // disable nginx buffering
+  res.flushHeaders();
+
+  // Send initial heartbeat
+  res.write(`data: ${JSON.stringify({ reference, status: "CONNECTED" })}\n\n`);
+
+  // Register for push notifications
+  registerNqrSseClient(reference, res);
+
+  // Keep-alive ping every 25s (prevents proxy timeout)
+  const ping = setInterval(() => {
+    try { res.write(": ping\n\n"); } catch { clearInterval(ping); }
+  }, 25_000);
+
+  req.on("close", () => clearInterval(ping));
+});
 
   return router;
 }

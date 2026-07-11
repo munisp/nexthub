@@ -30,6 +30,7 @@
  */
 
 import express from "express";
+import compression from "compression";
 import cors from "cors";
 import cookieParser from "cookie-parser";
 import path from "path";
@@ -53,6 +54,7 @@ app.use(cors({
   ],
   credentials: true,
 }));
+app.use(compression({ level: 6, threshold: 1024 })); // gzip responses > 1KB
 app.use(express.json({ limit: "10mb" }));
 app.use(cookieParser());
 

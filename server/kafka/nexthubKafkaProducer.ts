@@ -180,7 +180,18 @@ async function getProducer() {
   const kafka = await getKafka();
   if (!kafka) return null;
   try {
-    _producer = kafka.producer({ maxInFlightRequests: 5, idempotent: true });
+    _producer = kafka.producer({
+      maxInFlightRequests: 5,
+      idempotent: true,
+      // Batching: collect messages for up to 20ms before sending
+      // This dramatically reduces broker round-trips under high load
+      // (e.g. 1000 transfers/s → ~20 batches/s instead of 1000 sends/s)
+      linger: 20,
+      // Allow up to 1MB per batch (default 16KB is too small for financial events)
+      batch: { size: 1_048_576 },
+      // Compression: snappy reduces message size by ~60% for JSON payloads
+      compression: 2, // CompressionTypes.Snappy
+    });
     await _producer.connect();
     _producerConnected = true;
     console.log("[nexthub-kafka] Producer connected");
@@ -257,6 +268,37 @@ export const nexthubPublish = {
 };
 
 // ─── Graceful shutdown ────────────────────────────────────────────────────────
+
+// ─── Batch publish function ───────────────────────────────────────────────────
+// Sends multiple events to the same topic in a single broker round-trip.
+// Use this for bulk operations (e.g. settlement net position events, bulk transfers).
+export async function publishKafkaEventBatch<T extends object>(
+  topic: string,
+  payloads: T[],
+  keyFn?: (payload: T) => string,
+): Promise<boolean> {
+  if (payloads.length === 0) return true;
+  const producer = await getProducer();
+  if (!producer) return false;
+  try {
+    const now = new Date().toISOString();
+    await producer.send({
+      topic,
+      messages: payloads.map((payload) => ({
+        key: keyFn ? keyFn(payload) : null,
+        value: JSON.stringify({
+          ...payload,
+          _meta: { topic, publishedAt: now, source: "nexthub-core" },
+        }),
+        headers: { "content-type": "application/json" },
+      })),
+    });
+    return true;
+  } catch (err) {
+    console.error(`[nexthub-kafka] Batch publish failed for topic ${topic}:`, err);
+    return false;
+  }
+}
 export async function disconnectKafkaProducer() {
   if (_producer && _producerConnected) {
     await _producer.disconnect();

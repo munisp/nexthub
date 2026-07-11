@@ -23,6 +23,7 @@ import {
 } from "../drizzle/nexthub_schema";
 import { nexthubPublish } from "./kafka/nexthubKafkaProducer";
 import { logger } from "./logger";
+import { sweepExpiredNqrTransactions } from "./nibss/nqrService";
 
 // ─── Job: Billing overdue sweep ───────────────────────────────────────────────
 

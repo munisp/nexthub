@@ -14,7 +14,7 @@
 import { z } from "zod";
 import { TRPCError } from "@trpc/server";
 import { router, protectedProcedure, publicProcedure } from "../_core/trpc";
-import { getDb } from "../db";
+import { db } from "../db";
 import {
   nexthubRegulators,
   regulatorMagicTokens,
@@ -74,7 +74,6 @@ export const regulatorAuthRouter = router({
   requestMagicLink: protectedProcedure
     .input(z.object({ email: z.string().email(), origin: z.string().url() }))
     .mutation(async ({ input }) => {
-      const db = await getDb();
 
       // Find regulator by contactEmail
       const [regulator] = await db
@@ -121,7 +120,6 @@ export const regulatorAuthRouter = router({
   verifyMagicLink: publicProcedure
     .input(z.object({ token: z.string() }))
     .mutation(async ({ input, ctx }) => {
-      const db = await getDb();
       const now = new Date();
 
       // Find valid, unused, non-expired token
@@ -183,7 +181,6 @@ export const regulatorAuthRouter = router({
     const sessionToken = (ctx.req as any)?.cookies?.["regulator_session"];
     if (!sessionToken) return null;
 
-    const db = await getDb();
     const now = new Date();
 
     const [session] = await db
@@ -223,7 +220,6 @@ export const regulatorAuthRouter = router({
   logout: publicProcedure.mutation(async ({ ctx }) => {
     const sessionToken = (ctx.req as any)?.cookies?.["regulator_session"];
     if (sessionToken) {
-      const db = await getDb();
       await db
         .delete(regulatorSessions)
         .where(eq(regulatorSessions.sessionToken, sessionToken));

@@ -259,7 +259,7 @@ const quoteServiceImpl = {
         .orderBy(desc(nexthubFxRates.createdAt))
         .limit(1);
 
-      const rate = fxRate?.midRate ?? 1.0;
+      const rate = fxRate ? Number(fxRate.rate) : 1.0;
       const schemeFeeKobo = Math.round(amountKobo * 0.001);
       const interchangeFeeKobo = Math.round(amountKobo * 0.0005);
       const fxMarkupKobo = Math.round(amountKobo * 0.002);
@@ -314,15 +314,16 @@ const fxRateServiceImpl = {
         return callback(grpcError(grpc.status.NOT_FOUND, `No active rate for ${call.request.sourceCurrency}/${call.request.targetCurrency}`));
       }
 
-      const isStale = (now.getTime() - rate.createdAt.getTime()) > 5 * 60 * 1000; // > 5 min
+      const isStale = rate.createdAt ? (now.getTime() - rate.createdAt.getTime()) > 5 * 60 * 1000 : false;
+      const midRateNum = Number(rate.rate);
 
       callback(null, {
         sourceCurrency: rate.sourceCurrency,
         targetCurrency: rate.targetCurrency,
-        midRate: rate.midRate,
-        buyRate: rate.buyRate ?? rate.midRate,
-        sellRate: rate.sellRate ?? rate.midRate,
-        markupBps: rate.markupBps ?? 0,
+        midRate: midRateNum,
+        buyRate: midRateNum * 1.002,
+        sellRate: midRateNum * 0.998,
+        markupBps: 20,
         validFromMs: String(rate.validFrom.getTime()),
         validToMs: String(rate.validTo.getTime()),
         provider: rate.provider ?? "nexthub",
@@ -344,7 +345,7 @@ const fxRateServiceImpl = {
       const limit = Math.min(Number(maxPoints) || 100, 500);
 
       const rates = await db.select({
-        midRate: nexthubFxRates.midRate,
+        rate: nexthubFxRates.rate,
         createdAt: nexthubFxRates.createdAt,
       }).from(nexthubFxRates)
         .where(and(
@@ -358,8 +359,8 @@ const fxRateServiceImpl = {
 
       callback(null, {
         points: rates.map(r => ({
-          midRate: r.midRate,
-          timestampMs: String(r.createdAt.getTime()),
+          midRate: Number(r.rate),
+          timestampMs: String(r.createdAt?.getTime() ?? Date.now()),
         })),
       });
     } catch (err: any) {
@@ -385,10 +386,10 @@ const fxRateServiceImpl = {
         rates: rates.map(r => ({
           sourceCurrency: r.sourceCurrency,
           targetCurrency: r.targetCurrency,
-          midRate: r.midRate,
-          buyRate: r.buyRate ?? r.midRate,
-          sellRate: r.sellRate ?? r.midRate,
-          markupBps: r.markupBps ?? 0,
+          midRate: Number(r.rate),
+          buyRate: Number(r.rate) * 1.002,
+          sellRate: Number(r.rate) * 0.998,
+          markupBps: 20,
           validFromMs: String(r.validFrom.getTime()),
           validToMs: String(r.validTo.getTime()),
           provider: r.provider ?? "nexthub",
@@ -429,7 +430,7 @@ const ndcLimitServiceImpl = {
       const [position] = await db.select().from(nexthubParticipantPositions)
         .where(eq(nexthubParticipantPositions.participantId, dfspId)).limit(1);
 
-      const currentPositionKobo = Number(position?.currentPositionKobo ?? 0);
+      const currentPositionKobo = Number(position?.currentValue ?? 0);
       const ndcLimitKobo = Number(limit.ndcLimitKobo);
       const requestedKobo = Number(amountKobo);
       const availableKobo = ndcLimitKobo - currentPositionKobo;
@@ -473,11 +474,10 @@ const ndcLimitServiceImpl = {
       const [position] = await db.select().from(nexthubParticipantPositions)
         .where(eq(nexthubParticipantPositions.participantId, dfspId)).limit(1);
 
-      const currentPositionKobo = Number(position?.currentPositionKobo ?? 0);
+            const currentPositionKobo = Number(position?.currentValue ?? 0);
       const ndcLimitKobo = Number(limit?.ndcLimitKobo ?? 0);
       const availableKobo = ndcLimitKobo - currentPositionKobo;
       const utilisationPct = ndcLimitKobo > 0 ? (currentPositionKobo / ndcLimitKobo) * 100 : 0;
-
       callback(null, {
         dfspId,
         currency: currency || "NGN",
@@ -485,7 +485,7 @@ const ndcLimitServiceImpl = {
         ndcLimitKobo: String(ndcLimitKobo),
         availableKobo: String(availableKobo),
         utilisationPct,
-        lastUpdatedMs: String(position?.updatedAt?.getTime() ?? Date.now()),
+        lastUpdatedMs: String(position?.lastUpdated?.getTime() ?? Date.now()),
       });
     } catch (err: any) {
       callback(grpcError(grpc.status.INTERNAL, err?.message ?? "Internal error"));

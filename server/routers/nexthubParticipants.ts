@@ -16,6 +16,42 @@ const PositionLimitsSchema = z.object({
 });
 
 export const nexthubParticipantsRouter = router({
+  // ── Short aliases used by the React client ─────────────────────────────────
+  list: protectedProcedure
+    .input(z.object({
+      status: z.enum(["ACTIVE", "SUSPENDED", "PENDING", "OFFBOARDED"]).optional(),
+      currency: z.string().length(3).optional(),
+    }).optional())
+    .query(async ({ input }) => {
+      const where = input?.status ? `WHERE status = '${input.status}'` : "";
+      const rows = await db.execute(sql.raw(`SELECT * FROM nexthub_participants ${where} ORDER BY created_at DESC LIMIT 200`));
+      return rows.rows;
+    }),
+  onboard: protectedProcedure
+    .input(z.object({
+      name: z.string().min(2).max(100),
+      dfspId: z.string().min(3).max(32),
+      currency: z.string().length(3).default("NGN"),
+      schemeType: z.enum(["FSPIOP", "ISO20022", "BOTH"]).default("FSPIOP"),
+      endpointUrl: z.string().url(),
+    }))
+    .mutation(async ({ input }) => {
+      const id = `DFSP-${input.dfspId.toUpperCase()}-${Date.now()}`;
+      await db.execute(sql.raw(`INSERT INTO nexthub_participants (id, name, dfsp_id, currency, status, scheme_type, endpoint_url, created_at, updated_at) VALUES ('${id}', '${input.name}', '${input.dfspId}', '${input.currency}', 'PENDING', '${input.schemeType}', '${input.endpointUrl}', NOW(), NOW())`));
+      return { participantId: id, status: "PENDING" };
+    }),
+  suspend: protectedProcedure
+    .input(z.object({ participantId: z.string(), reason: z.string().min(5) }))
+    .mutation(async ({ input }) => {
+      await db.execute(sql.raw(`UPDATE nexthub_participants SET status = 'SUSPENDED', updated_at = NOW() WHERE id = '${input.participantId}'`));
+      return { participantId: input.participantId, status: "SUSPENDED" };
+    }),
+  activate: protectedProcedure
+    .input(z.object({ participantId: z.string() }))
+    .mutation(async ({ input }) => {
+      await db.execute(sql.raw(`UPDATE nexthub_participants SET status = 'ACTIVE', updated_at = NOW() WHERE id = '${input.participantId}'`));
+      return { participantId: input.participantId, status: "ACTIVE" };
+    }),
   // ── Participant Lifecycle ──────────────────────────────────────────────────
 
   listParticipants: protectedProcedure

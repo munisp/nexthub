@@ -9,7 +9,7 @@
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
 import { router, protectedProcedure } from "../_core/trpc";
-import { getDb } from "../db";
+import { db } from "../db";
 import {
   nexthubRegulators,
   nexthubParticipants,
@@ -38,8 +38,6 @@ const regulatorProcedure = protectedProcedure.use(async (opts) => {
 
 const regulatorProfileRouter = router({
   getProfile: regulatorProcedure.query(async () => {
-    const db = await getDb();
-    if (!db) return null;
     const [profile] = await db
       .select()
       .from(nexthubRegulators)
@@ -49,16 +47,12 @@ const regulatorProfileRouter = router({
   }),
 
   list: regulatorProcedure.query(async () => {
-    const db = await getDb();
-    if (!db) return [];
     return db.select().from(nexthubRegulators).orderBy(desc(nexthubRegulators.createdAt));
   }),
 });
 
 const regulatorParticipantsRouter = router({
   list: regulatorProcedure.query(async () => {
-    const db = await getDb();
-    if (!db) return [];
     return db
       .select({
         id: nexthubParticipants.id,
@@ -74,8 +68,6 @@ const regulatorParticipantsRouter = router({
   }),
 
   summary: regulatorProcedure.query(async () => {
-    const db = await getDb();
-    if (!db) return [];
     return db
       .select({
         status: nexthubParticipants.status,
@@ -88,8 +80,6 @@ const regulatorParticipantsRouter = router({
 
 const regulatorLimitsRouter = router({
   list: regulatorProcedure.query(async () => {
-    const db = await getDb();
-    if (!db) return [];
     return db
       .select({
         id: nexthubParticipantLimits.id,
@@ -109,8 +99,6 @@ const regulatorLimitsRouter = router({
   breaches: regulatorProcedure
     .input(z.object({ threshold: z.number().min(0).max(1).default(0.8) }))
     .query(async ({ input }) => {
-      const db = await getDb();
-      if (!db) return [];
       // Return limits where alertThreshold is >= input.threshold (proxy for breach)
       const limits = await db
         .select()
@@ -130,8 +118,6 @@ const regulatorSettlementRouter = router({
       })
     )
     .query(async ({ input }) => {
-      const db = await getDb();
-      if (!db) return [];
       const conditions = [];
       if (input.from) conditions.push(gte(transactions.createdAt, input.from));
       if (input.to) conditions.push(lte(transactions.createdAt, input.to));
@@ -151,8 +137,6 @@ const regulatorSettlementRouter = router({
     }),
 
   banks: regulatorProcedure.query(async () => {
-    const db = await getDb();
-    if (!db) return [];
     return db.select().from(settlementBanks).orderBy(desc(settlementBanks.createdAt));
   }),
 });
@@ -161,8 +145,6 @@ const regulatorComplianceRouter = router({
   scorecards: regulatorProcedure
     .input(z.object({ entityId: z.string().optional() }))
     .query(async ({ input }) => {
-      const db = await getDb();
-      if (!db) return [];
       const conditions = input.entityId
         ? [eq(complianceCheckResults.merchantId, input.entityId)]
         : [];
@@ -175,8 +157,6 @@ const regulatorComplianceRouter = router({
     }),
 
   summary: regulatorProcedure.query(async () => {
-    const db = await getDb();
-    if (!db) return [];
     return db
       .select({
         checkType: complianceCheckResults.checkType,
@@ -198,8 +178,6 @@ const regulatorAuditRouter = router({
       })
     )
     .query(async ({ input }) => {
-      const db = await getDb();
-      if (!db) return [];
       const conditions = [];
       if (input.action) conditions.push(eq(auditLogs.action, input.action));
       if (input.entityType) conditions.push(eq(auditLogs.resource, input.entityType));
@@ -214,8 +192,6 @@ const regulatorAuditRouter = router({
 
 const regulatorDfspRouter = router({
   list: regulatorProcedure.query(async () => {
-    const db = await getDb();
-    if (!db) return [];
     return db
       .select({
         id: nexthubDfsps.id,

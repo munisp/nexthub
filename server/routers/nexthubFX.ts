@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { protectedProcedure, router } from "../_core/trpc";
-import { getDb } from "../db";
+import { db } from "../db";
 import { nexthubFxRates } from "../../drizzle/nexthub_schema";
 import { eq, and, gte, lte, desc } from "drizzle-orm";
 import { TRPCError } from "@trpc/server";
@@ -13,7 +13,6 @@ export const nexthubFXRouter = router({
       targetCurrency: z.string().length(3),
     }))
     .query(async ({ input }) => {
-      const db = await getDb();
       const now = new Date();
       const rates = await db
         .select()
@@ -43,7 +42,6 @@ export const nexthubFXRouter = router({
       sourceCurrency: z.string().length(3).optional(),
     }).optional())
     .query(async ({ input }) => {
-      const db = await getDb();
       const now = new Date();
       const conditions = [
         lte(nexthubFxRates.validFrom, now),
@@ -69,7 +67,6 @@ export const nexthubFXRouter = router({
       validForSeconds: z.number().int().min(60).max(86400).default(300),
     }))
     .mutation(async ({ input }) => {
-      const db = await getDb();
       const now = new Date();
       const validTo = new Date(now.getTime() + input.validForSeconds * 1000);
 
@@ -96,7 +93,6 @@ export const nexthubFXRouter = router({
       sourceAmount: z.string().regex(/^\d+(\.\d+)?$/),
     }))
     .query(async ({ input }) => {
-      const db = await getDb();
       const now = new Date();
       const rates = await db
         .select()
@@ -140,7 +136,6 @@ export const nexthubFXRouter = router({
       limit: z.number().int().min(1).max(200).default(50),
     }))
     .query(async ({ input }) => {
-      const db = await getDb();
       return db
         .select()
         .from(nexthubFxRates)
@@ -154,7 +149,6 @@ export const nexthubFXRouter = router({
 
   // Get supported currency pairs
   supportedPairs: protectedProcedure.query(async () => {
-    const db = await getDb();
     const now = new Date();
     const rates = await db
       .select({

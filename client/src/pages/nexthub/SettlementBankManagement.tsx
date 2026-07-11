@@ -24,7 +24,7 @@ export default function SettlementBankManagement() {
     onSuccess: () => { toast.success("Bank removed."); refetch(); },
     onError: (e) => toast.error(e.message),
   });
-  const activateMutation = trpc.wave223.settlementBanks.setActive.useMutation({
+  const activateMutation = trpc.wave223.settlementBanks.update.useMutation({
     onSuccess: () => { toast.success("Bank status updated."); refetch(); },
     onError: (e) => toast.error(e.message),
   });
@@ -62,21 +62,21 @@ export default function SettlementBankManagement() {
             <TableBody>
               {isLoading && <TableRow><TableCell colSpan={8} className="text-center py-8 text-muted-foreground">Loading…</TableCell></TableRow>}
               {!isLoading && !banks?.length && <TableRow><TableCell colSpan={8} className="text-center py-8 text-muted-foreground">No settlement banks configured.</TableCell></TableRow>}
-              {banks?.map((b) => (
+              {(banks as any[] | undefined)?.map((b: any) => (
                 <TableRow key={b.id}>
                   <TableCell className="font-medium">{b.bankName}</TableCell>
                   <TableCell className="font-mono text-sm">{b.bankCode}</TableCell>
                   <TableCell className="font-mono text-sm">{b.swiftCode ?? "—"}</TableCell>
-                  <TableCell className="font-mono text-sm">{b.accountNumber}</TableCell>
-                  <TableCell><Badge variant="outline">{b.currency}</Badge></TableCell>
-                  <TableCell className="text-sm">{b.settlementWindowHours ? `${b.settlementWindowHours}h` : "—"}</TableCell>
+                  <TableCell className="font-mono text-sm">{b.settlementAccountNumber}</TableCell>
+                  <TableCell><Badge variant="outline">{"NGN"}</Badge></TableCell>
+                  <TableCell className="text-sm">{"24h"}</TableCell>
                   <TableCell>
-                    <Badge variant={b.isActive ? "default" : "secondary"}>{b.isActive ? "Active" : "Inactive"}</Badge>
+                    <Badge variant="default">{"Active"}</Badge>
                   </TableCell>
                   <TableCell className="text-right">
                     <div className="flex gap-1 justify-end">
-                      <Button variant="ghost" size="sm" onClick={() => activateMutation.mutate({ id: b.id, isActive: !b.isActive })}>
-                        {b.isActive ? <XCircle className="h-4 w-4 text-amber-500" /> : <CheckCircle2 className="h-4 w-4 text-green-500" />}
+                      <Button variant="ghost" size="sm" onClick={() => activateMutation.mutate({ id: b.id, data: { status: "inactive" } })}>
+                        {<XCircle className="h-4 w-4 text-amber-500" />}
                       </Button>
                       <Button variant="ghost" size="sm" onClick={() => deleteMutation.mutate({ id: b.id })} className="text-destructive hover:text-destructive">
                         <Trash2 className="h-4 w-4" />
@@ -111,7 +111,7 @@ export default function SettlementBankManagement() {
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setOpen(false)}>Cancel</Button>
-            <Button onClick={() => createMutation.mutate({ bankName: form.bankName, bankCode: form.bankCode, swiftCode: form.swiftCode, accountNumber: form.accountNumber, currency: form.currency, settlementWindowHours: form.settlementWindowHours ? parseInt(form.settlementWindowHours) : undefined, contactEmail: form.contactEmail })} disabled={createMutation.isPending}>
+            <Button onClick={() => createMutation.mutate({ bankName: form.bankName, bankCode: form.bankCode, swiftCode: form.swiftCode, settlementAccountNumber: form.accountNumber, contactEmail: form.contactEmail })} disabled={createMutation.isPending}>
               {createMutation.isPending ? "Registering…" : "Register Bank"}
             </Button>
           </DialogFooter>

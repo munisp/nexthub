@@ -190,15 +190,15 @@ export default function ParticipantLifecycle() {
   const [selectedForTracker, setSelectedForTracker] = useState<string | null>(null);
 
   const [onboardForm, setOnboardForm] = useState({
-    name: "", dfspId: "", currency: "NGN", schemeType: "FSPIOP", endpointUrl: "",
+    name: "", dfspId: "", currency: "NGN", schemeType: "FSPIOP" as "FSPIOP" | "ISO20022" | "BOTH", endpointUrl: "",
   });
   const [limitsForm, setLimitsForm] = useState({
     netDebitCap: "", liquidityCover: "", alertThreshold: "0.8", suspendOnBreach: true,
   });
 
-  const { data: participants, refetch } = trpc.nexthubParticipants.list.useQuery({ currency, status: statusFilter === "ALL" ? undefined : statusFilter });
-  const { data: positions } = trpc.nexthubParticipants.getPositions.useQuery({ currency }, { refetchInterval: 10000 });
-  const { data: limits } = trpc.nexthubParticipants.getLimits.useQuery({ currency });
+  const { data: participants, refetch } = trpc.nexthubParticipants.list.useQuery({ currency, status: (statusFilter === "ALL" ? undefined : statusFilter) as "PENDING" | "SUSPENDED" | "ACTIVE" | "OFFBOARDED" | undefined });
+  const { data: positions } = trpc.nexthubParticipants.getPositions.useQuery({ currency, status: "ALL" }, { refetchInterval: 10000 });
+  const { data: limits } = trpc.nexthubParticipants.getLimits.useQuery({ participantId: "all", currency });
 
   const onboard = trpc.nexthubParticipants.onboard.useMutation({
     onSuccess: () => { refetch(); setOnboardOpen(false); toast({ title: "Participant onboarded" }); },
@@ -219,14 +219,14 @@ export default function ParticipantLifecycle() {
 
   // Merge positions into participants for charts
   const participantsWithPositions = (participants ?? []).map((p) => {
-    const pos = (positions ?? []).find((x) => x.dfspId === p.dfspId);
-    const lim = (limits ?? []).find((x) => x.dfspId === p.dfspId);
+    const pos = (positions?.positions ?? []).find((x: any) => x.dfsp_id === p.dfspId);
+    const lim = (limits as any);
     return {
       ...p,
-      currentPosition: pos?.currentPosition ?? "0",
-      netDebitCap: lim?.netDebitCap ?? "1000000",
-      ndcStatus: pos?.ndcStatus ?? "OK",
-    };
+      currentPosition: pos?.current_value ?? 0,
+      netDebitCap: (lim?.netDebitCap ?? 1000000) as number,
+      ndcStatus: (pos?.position_status ?? "OK") as string,
+    } as any;
   });
 
   const selectedTrackerParticipant = participantsWithPositions.find((p) => p.dfspId === selectedForTracker);
@@ -284,7 +284,7 @@ export default function ParticipantLifecycle() {
                   </div>
                   <div className="space-y-1.5">
                     <Label>Scheme Type</Label>
-                    <Select value={onboardForm.schemeType} onValueChange={(v) => setOnboardForm((p) => ({ ...p, schemeType: v }))}>
+                    <Select value={onboardForm.schemeType} onValueChange={(v) => setOnboardForm((p) => ({ ...p, schemeType: v as "FSPIOP" | "ISO20022" | "BOTH" }))}>
                       <SelectTrigger><SelectValue /></SelectTrigger>
                       <SelectContent>
                         {["FSPIOP", "ISO20022", "CBDC"].map((s) => <SelectItem key={s} value={s}>{s}</SelectItem>)}
@@ -380,9 +380,9 @@ export default function ParticipantLifecycle() {
                             <Settings className="h-3 w-3 mr-1" /> Limits
                           </Button>
                           {p.status === "ACTIVE" ? (
-                            <Button variant="ghost" size="sm" className="h-7 text-xs text-destructive hover:text-destructive" onClick={() => suspend.mutate({ dfspId: p.dfspId })}>Suspend</Button>
+                            <Button variant="ghost" size="sm" className="h-7 text-xs text-destructive hover:text-destructive" onClick={() => suspend.mutate({ participantId: String(p.id ?? ""), reason: "Manual suspension" })}>Suspend</Button>
                           ) : p.status === "SUSPENDED" ? (
-                            <Button variant="ghost" size="sm" className="h-7 text-xs text-green-600" onClick={() => activate.mutate({ dfspId: p.dfspId })}>Activate</Button>
+                            <Button variant="ghost" size="sm" className="h-7 text-xs text-green-600" onClick={() => activate.mutate({ participantId: String(p.id) })}>Activate</Button>
                           ) : null}
                         </div>
                       </TableCell>
@@ -465,11 +465,11 @@ export default function ParticipantLifecycle() {
                   {(participants ?? []).length === 0 && (
                     <p className="text-sm text-muted-foreground text-center py-4">No participants found</p>
                   )}
-                  {(participants ?? []).map((p) => (
+                  {((participants ?? []) as any[]).map((p: any) => (
                     <button
                       key={p.id}
                       className={`w-full text-left p-3 rounded-lg border transition-colors ${selectedForTracker === p.dfspId ? "border-primary bg-primary/5" : "border-border hover:bg-muted/50"}`}
-                      onClick={() => setSelectedForTracker(p.dfspId)}
+                      onClick={() => setSelectedForTracker(String(p.id))}
                     >
                       <div className="flex items-center justify-between">
                         <span className="font-medium text-sm">{p.name}</span>
@@ -525,7 +525,7 @@ export default function ParticipantLifecycle() {
           <div className="flex justify-end gap-2 mt-2">
             <Button variant="outline" onClick={() => setLimitsOpen(false)}>Cancel</Button>
             <Button
-              onClick={() => setLimits.mutate({ dfspId: selectedParticipant!, currency, ...limitsForm, netDebitCap: parseFloat(limitsForm.netDebitCap), liquidityCover: parseFloat(limitsForm.liquidityCover), alertThreshold: parseFloat(limitsForm.alertThreshold) })}
+              onClick={() => setLimits.mutate({ participantId: String(selectedParticipant ?? ""), currency, netDebitCap: parseFloat(limitsForm.netDebitCap), liquidityCover: parseFloat(limitsForm.liquidityCover), alertThreshold: parseFloat(limitsForm.alertThreshold), suspendOnBreach: limitsForm.suspendOnBreach })}
               disabled={!limitsForm.netDebitCap || setLimits.isPending}
             >
               {setLimits.isPending ? "Saving…" : "Save Limits"}

@@ -80,7 +80,7 @@ const hsmRouter = router({
   signTest: protectedProcedure
     .input(z.object({
       dfspId:  z.string().min(1),
-      payload: z.record(z.any()),
+      payload: z.record(z.string(), z.any()),
     }))
     .mutation(async ({ input }) => {
       const token = await signPayload(input.dfspId, input.payload);

@@ -72,10 +72,10 @@ async function startAuditConsumer() {
         try {
           await db.insert(auditLogs).values({
             id: row.entityId ?? crypto.randomUUID(),
+            merchantId: row.merchantId ?? null,
             action: row.eventType ?? "UNKNOWN",
-            entityType: "paygate_transaction",
-            entityId: row.entityId ?? "",
-            actorId: row.merchantId ?? "",
+            resource: row.entityType ?? "paygate_transaction",
+            resourceId: row.entityId ?? null,
             metadata: JSON.stringify(row),
             createdAt: row.timestamp ? new Date(row.timestamp) : new Date(),
           }).onConflictDoNothing();

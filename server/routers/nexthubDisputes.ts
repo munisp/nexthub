@@ -7,7 +7,7 @@
  */
 import { z } from "zod";
 import { protectedProcedure, router } from "../_core/trpc";
-import { getDb } from "../db";
+import { db } from "../db";
 import { transferDisputes, feePostings } from "../../drizzle/nexthub_schema";
 import { eq, desc, sql, and } from "drizzle-orm";
 import { TRPCError } from "@trpc/server";
@@ -34,7 +34,6 @@ export const nexthubDisputesRouter = router({
       dfspId: z.string().optional(),
     }))
     .query(async ({ input }) => {
-      const db = await getDb();
       const offset = (input.page - 1) * input.pageSize;
 
       const conditions = [];
@@ -62,7 +61,6 @@ export const nexthubDisputesRouter = router({
   getDispute: protectedProcedure
     .input(z.object({ disputeId: z.string() }))
     .query(async ({ input }) => {
-      const db = await getDb();
       const [dispute] = await db.select()
         .from(transferDisputes)
         .where(eq(transferDisputes.id, input.disputeId))
@@ -85,7 +83,6 @@ export const nexthubDisputesRouter = router({
       evidence: z.string().optional(), // JSON array of evidence items
     }))
     .mutation(async ({ input }) => {
-      const db = await getDb();
 
       const slaHours = DISPUTE_SLA_HOURS[input.disputeType];
       const slaDeadline = new Date();
@@ -111,7 +108,6 @@ export const nexthubDisputesRouter = router({
   reviewDispute: protectedProcedure
     .input(z.object({ disputeId: z.string() }))
     .mutation(async ({ input }) => {
-      const db = await getDb();
       const [updated] = await db.update(transferDisputes)
         .set({ status: "UNDER_REVIEW", updatedAt: new Date() })
         .where(and(eq(transferDisputes.id, input.disputeId), eq(transferDisputes.status, "OPEN")))
@@ -129,7 +125,6 @@ export const nexthubDisputesRouter = router({
       reversalTransferId: z.string().optional(), // TigerBeetle reversal ID
     }))
     .mutation(async ({ input }) => {
-      const db = await getDb();
 
       const [dispute] = await db.select()
         .from(transferDisputes)
@@ -166,7 +161,6 @@ export const nexthubDisputesRouter = router({
       resolutionNotes: z.string(),
     }))
     .mutation(async ({ input }) => {
-      const db = await getDb();
 
       const [dispute] = await db.select()
         .from(transferDisputes)
@@ -210,7 +204,6 @@ export const nexthubDisputesRouter = router({
       notes: z.string().optional(),
     }))
     .mutation(async ({ input }) => {
-      const db = await getDb();
       const [updated] = await db.update(transferDisputes)
         .set({
           status: "ESCALATED",
@@ -227,7 +220,6 @@ export const nexthubDisputesRouter = router({
   /** Get dispute dashboard statistics */
   getStats: protectedProcedure
     .query(async () => {
-      const db = await getDb();
 
       const [stats] = await db.select({
         totalOpen: sql<number>`count(*) filter (where status = 'OPEN')::int`,

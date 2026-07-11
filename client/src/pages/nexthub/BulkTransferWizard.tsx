@@ -32,6 +32,30 @@ const STEP_LABELS: Record<Step, string> = {
   done: "5. Done",
 };
 
+
+// Parse CSV text into transfer objects
+function parseCsvToTransfers(csvText: string): Array<{
+  reference: string; amount: number; currency: string;
+  beneficiaryName: string; beneficiaryAccount: string; bankCode: string; narration?: string;
+}> {
+  const lines = csvText.trim().split("\n").filter(l => l.trim());
+  if (lines.length < 2) return [];
+  const header = lines[0].split(",").map(h => h.trim().toLowerCase());
+  return lines.slice(1).map((line, i) => {
+    const cols = line.split(",").map(c => c.trim().replace(/^"|"$/g, ""));
+    const get = (key: string) => cols[header.indexOf(key)] ?? "";
+    return {
+      reference: get("reference") || `REF-${Date.now()}-${i}`,
+      amount: parseFloat(get("amount")) || 0,
+      currency: get("currency") || "NGN",
+      beneficiaryName: get("beneficiaryname") || get("beneficiary_name") || get("name"),
+      beneficiaryAccount: get("beneficiaryaccount") || get("account") || get("account_number"),
+      bankCode: get("bankcode") || get("bank_code") || get("bank"),
+      narration: get("narration") || get("description") || undefined,
+    };
+  }).filter(t => t.beneficiaryName && t.beneficiaryAccount);
+}
+
 export default function BulkTransferWizard() {
   const [step, setStep] = useState<Step>("upload");
   const [csvText, setCsvText] = useState("");
@@ -43,7 +67,12 @@ export default function BulkTransferWizard() {
 
   const validateMutation = trpc.wave223.bulkTransfers.validate.useMutation({
     onSuccess: (data) => {
-      setRows(data.rows);
+      // Server returns validated summary; build display rows from parsed CSV
+      const parsed = parseCsvToTransfers(csvText);
+      setRows((parsed.map((t, i) => ({ ...t,
+        status: data.errors.some(e => e.row === i + 1) ? "invalid" as const : "valid" as const,
+        error: data.errors.find(e => e.row === i + 1)?.message,
+      })) as unknown) as TransferRow[]);
       setStep("review");
     },
     onError: (e) => toast.error(e.message),
@@ -68,7 +97,7 @@ export default function BulkTransferWizard() {
 
   const handleValidate = () => {
     if (!csvText.trim()) { toast.error("Please upload or paste CSV data."); return; }
-    validateMutation.mutate({ csvText, defaultCurrency: currency });
+    validateMutation.mutate({ transfers: parseCsvToTransfers(csvText).map(t => ({ ...t, currency: t.currency || currency })) });
     setStep("validate");
   };
 
@@ -201,7 +230,7 @@ export default function BulkTransferWizard() {
 
           <div className="flex gap-3">
             <Button variant="outline" onClick={reset}>Start Over</Button>
-            <Button onClick={() => submitMutation.mutate({ csvText, batchName, defaultCurrency: currency })} disabled={validRows.length === 0 || submitMutation.isPending} className="flex-1">
+            <Button onClick={() => submitMutation.mutate({ batchName, merchantId: "hub", transfers: parseCsvToTransfers(csvText).map(t => ({ ...t, currency: t.currency || currency })) })} disabled={validRows.length === 0 || submitMutation.isPending} className="flex-1">
               {submitMutation.isPending ? <><Loader2 className="h-4 w-4 animate-spin mr-2" /> Submitting…</> : <>Submit {validRows.length} Transfers <ArrowRight className="h-4 w-4 ml-1" /></>}
             </Button>
           </div>

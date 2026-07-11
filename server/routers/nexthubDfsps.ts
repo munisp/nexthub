@@ -6,7 +6,7 @@
  */
 import { z } from "zod";
 import { protectedProcedure, router } from "../_core/trpc";
-import { getDb } from "../db";
+import { db } from "../db";
 import { nexthubDfsps, dfspFeeTiers } from "../../drizzle/nexthub_schema";
 import { eq, desc, sql, and, ilike } from "drizzle-orm";
 import { TRPCError } from "@trpc/server";
@@ -23,7 +23,6 @@ export const nexthubDfspsRouter = router({
       search: z.string().optional(),
     }))
     .query(async ({ input }) => {
-      const db = await getDb();
       const offset = (input.page - 1) * input.pageSize;
 
       const conditions = [];
@@ -51,7 +50,6 @@ export const nexthubDfspsRouter = router({
   getDfsp: protectedProcedure
     .input(z.object({ dfspId: z.string() }))
     .query(async ({ input }) => {
-      const db = await getDb();
 
       const [dfsp] = await db.select()
         .from(nexthubDfsps)
@@ -80,7 +78,6 @@ export const nexthubDfspsRouter = router({
       liquidityLimitKobo: z.number().int().min(0).default(0),
     }))
     .mutation(async ({ input }) => {
-      const db = await getDb();
 
       const [existing] = await db.select({ id: nexthubDfsps.id })
         .from(nexthubDfsps)
@@ -120,7 +117,6 @@ export const nexthubDfspsRouter = router({
       tigerBeetleLiquidityAccountId: z.string().optional(),
     }))
     .mutation(async ({ input }) => {
-      const db = await getDb();
 
       const updates: Partial<typeof nexthubDfsps.$inferInsert> = {
         updatedAt: new Date(),
@@ -148,7 +144,6 @@ export const nexthubDfspsRouter = router({
       expiresAt: z.date(),
     }))
     .mutation(async ({ input }) => {
-      const db = await getDb();
       const [updated] = await db.update(nexthubDfsps)
         .set({
           clientCertificateThumbprint: input.thumbprint,
@@ -165,7 +160,6 @@ export const nexthubDfspsRouter = router({
   /** Get DFSP registry statistics */
   getStats: protectedProcedure
     .query(async () => {
-      const db = await getDb();
 
       const [stats] = await db.select({
         total: sql<number>`count(*)::int`,

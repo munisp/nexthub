@@ -7,7 +7,7 @@
  */
 import { z } from "zod";
 import { protectedProcedure, router } from "../_core/trpc";
-import { getDb } from "../db";
+import { db } from "../db";
 import {
   nexthubInvoices,
   feePostings,
@@ -25,7 +25,6 @@ export const nexthubBillingRouter = router({
   listFeeTiers: protectedProcedure
     .input(z.object({ dfspId: z.string() }))
     .query(async ({ input }) => {
-      const db = await getDb();
       return db.select().from(dfspFeeTiers)
         .where(eq(dfspFeeTiers.dfspId, input.dfspId))
         .orderBy(desc(dfspFeeTiers.effectiveFrom));
@@ -45,7 +44,6 @@ export const nexthubBillingRouter = router({
       effectiveFrom: z.date().optional(),
     }))
     .mutation(async ({ input }) => {
-      const db = await getDb();
       const [tier] = await db.insert(dfspFeeTiers).values({
         dfspId: input.dfspId,
         feeType: input.feeType,
@@ -73,7 +71,6 @@ export const nexthubBillingRouter = router({
       to: z.date().optional(),
     }))
     .query(async ({ input }) => {
-      const db = await getDb();
       const offset = (input.page - 1) * input.pageSize;
 
       const conditions = [eq(feePostings.dfspId, input.dfspId)];
@@ -106,7 +103,6 @@ export const nexthubBillingRouter = router({
       status: z.enum(["DRAFT", "ISSUED", "PAID", "OVERDUE", "ALL"]).default("ALL"),
     }))
     .query(async ({ input }) => {
-      const db = await getDb();
       const offset = (input.page - 1) * input.pageSize;
 
       const conditions = [];
@@ -133,7 +129,6 @@ export const nexthubBillingRouter = router({
   getInvoice: protectedProcedure
     .input(z.object({ invoiceId: z.string() }))
     .query(async ({ input }) => {
-      const db = await getDb();
       const [invoice] = await db.select()
         .from(nexthubInvoices)
         .where(eq(nexthubInvoices.id, input.invoiceId))
@@ -151,7 +146,6 @@ export const nexthubBillingRouter = router({
       billingMonth: z.number().int().min(1).max(12),
     }))
     .mutation(async ({ input }) => {
-      const db = await getDb();
 
       const periodStart = new Date(input.billingYear, input.billingMonth - 1, 1);
       const periodEnd = new Date(input.billingYear, input.billingMonth, 0, 23, 59, 59);
@@ -221,7 +215,6 @@ export const nexthubBillingRouter = router({
   issueInvoice: protectedProcedure
     .input(z.object({ invoiceId: z.string() }))
     .mutation(async ({ input }) => {
-      const db = await getDb();
       const [updated] = await db.update(nexthubInvoices)
         .set({ status: "ISSUED", issuedAt: new Date(), updatedAt: new Date() })
         .where(and(eq(nexthubInvoices.id, input.invoiceId), eq(nexthubInvoices.status, "DRAFT")))
@@ -238,7 +231,6 @@ export const nexthubBillingRouter = router({
       tigerBeetleTransferId: z.string().optional(),
     }))
     .mutation(async ({ input }) => {
-      const db = await getDb();
       const [updated] = await db.update(nexthubInvoices)
         .set({
           status: "PAID",
@@ -256,7 +248,6 @@ export const nexthubBillingRouter = router({
   /** Get billing dashboard statistics */
   getStats: protectedProcedure
     .query(async () => {
-      const db = await getDb();
 
       const [stats] = await db.select({
         totalInvoices: sql<number>`count(*)::int`,
@@ -279,7 +270,6 @@ export const nexthubBillingRouter = router({
       to: z.date(),
     }))
     .query(async ({ input }) => {
-      const db = await getDb();
 
       const [summary] = await db.select({
         totalFees: sql<number>`coalesce(sum(amount_kobo), 0)::bigint`,

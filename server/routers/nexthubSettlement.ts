@@ -9,7 +9,7 @@
  */
 import { z } from "zod";
 import { protectedProcedure, router } from "../_core/trpc";
-import { getDb } from "../db";
+import { db } from "../db";
 import {
   settlementWindows,
   settlementNetPositions,
@@ -32,7 +32,6 @@ export const nexthubSettlementRouter = router({
       windowType: z.enum(["RTGS", "DNS_INTRADAY", "DNS_EOD", "ALL"]).default("ALL"),
     }))
     .query(async ({ input }) => {
-      const db = await getDb();
       const offset = (input.page - 1) * input.pageSize;
 
       const conditions = [];
@@ -64,7 +63,6 @@ export const nexthubSettlementRouter = router({
   getWindow: protectedProcedure
     .input(z.object({ windowId: z.string() }))
     .query(async ({ input }) => {
-      const db = await getDb();
 
       const [window] = await db.select()
         .from(settlementWindows)
@@ -90,7 +88,6 @@ export const nexthubSettlementRouter = router({
       currency: z.string().default("NGN"),
     }))
     .mutation(async ({ input }) => {
-      const db = await getDb();
 
       // Ensure no other window of the same type is currently OPEN
       const [existing] = await db.select({ id: settlementWindows.id })
@@ -122,7 +119,6 @@ export const nexthubSettlementRouter = router({
   closeWindow: protectedProcedure
     .input(z.object({ windowId: z.string() }))
     .mutation(async ({ input }) => {
-      const db = await getDb();
 
       const [window] = await db.select()
         .from(settlementWindows)
@@ -208,7 +204,6 @@ export const nexthubSettlementRouter = router({
   settleWindow: protectedProcedure
     .input(z.object({ windowId: z.string() }))
     .mutation(async ({ input }) => {
-      const db = await getDb();
 
       const [window] = await db.select()
         .from(settlementWindows)
@@ -240,7 +235,6 @@ export const nexthubSettlementRouter = router({
   /** Get settlement statistics for the dashboard */
   getStats: protectedProcedure
     .query(async () => {
-      const db = await getDb();
 
       const [stats] = await db.select({
         totalWindows: sql<number>`count(*)::int`,

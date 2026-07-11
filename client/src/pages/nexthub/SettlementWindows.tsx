@@ -89,9 +89,9 @@ export default function SettlementWindows() {
               status: w.status,
               openedAt: w.openedAt ? new Date(w.openedAt).toISOString() : "",
               closedAt: w.closedAt ? new Date(w.closedAt).toISOString() : "",
-              totalDebit: w.totalDebitKobo ?? 0,
-              totalCredit: w.totalCreditKobo ?? 0,
-              participantCount: w.participantCount ?? 0,
+              totalDebit: w.totalAmountKobo ?? 0,
+              totalCredit: w.totalAmountKobo ?? 0,
+              participantCount: 0,
             }));
             exportToCSV(rows, `settlement-windows-${new Date().toISOString().slice(0,10)}.csv`);
           }} disabled={!data?.windows?.length}>

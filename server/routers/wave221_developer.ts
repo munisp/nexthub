@@ -48,7 +48,7 @@ const apiKeyRouter = router({
         createdAt: developerApiKeys.createdAt,
       })
       .from(developerApiKeys)
-      .where(eq(developerApiKeys.merchantId, ctx.user.id))
+      .where(eq(developerApiKeys.merchantId, String(ctx.user.id)))
       .orderBy(desc(developerApiKeys.createdAt));
   }),
 
@@ -66,7 +66,7 @@ const apiKeyRouter = router({
       const id = `key_${crypto.randomUUID()}`;
       await db.insert(developerApiKeys).values({
         id,
-        merchantId: ctx.user.id,
+        merchantId: String(ctx.user.id),
         name: input.name,
         keyPrefix: prefix,
         keyHash: hash,
@@ -85,7 +85,7 @@ const apiKeyRouter = router({
         .update(developerApiKeys)
         .set({ isActive: false, updatedAt: new Date() })
         .where(
-          and(eq(developerApiKeys.id, input.id), eq(developerApiKeys.merchantId, ctx.user.id))
+          and(eq(developerApiKeys.id, input.id), eq(developerApiKeys.merchantId, String(ctx.user.id)))
         );
       return { success: true };
     }),
@@ -96,7 +96,7 @@ const apiKeyRouter = router({
       await db
         .delete(developerApiKeys)
         .where(
-          and(eq(developerApiKeys.id, input.id), eq(developerApiKeys.merchantId, ctx.user.id))
+          and(eq(developerApiKeys.id, input.id), eq(developerApiKeys.merchantId, String(ctx.user.id)))
         );
       return { success: true };
     }),
@@ -108,7 +108,7 @@ const webhookRouter = router({
     return db
       .select()
       .from(developerWebhooks)
-      .where(eq(developerWebhooks.merchantId, ctx.user.id))
+      .where(eq(developerWebhooks.merchantId, String(ctx.user.id)))
       .orderBy(desc(developerWebhooks.createdAt));
   }),
 
@@ -127,7 +127,7 @@ const webhookRouter = router({
       const signingSecret = generateSigningSecret();
       await db.insert(developerWebhooks).values({
         id,
-        merchantId: ctx.user.id,
+        merchantId: String(ctx.user.id),
         url: input.url,
         description: input.description,
         events: JSON.stringify(input.events),
@@ -164,7 +164,7 @@ const webhookRouter = router({
         .update(developerWebhooks)
         .set(updateData)
         .where(
-          and(eq(developerWebhooks.id, id), eq(developerWebhooks.merchantId, ctx.user.id))
+          and(eq(developerWebhooks.id, id), eq(developerWebhooks.merchantId, String(ctx.user.id)))
         );
       return { success: true };
     }),
@@ -175,7 +175,7 @@ const webhookRouter = router({
       await db
         .delete(developerWebhooks)
         .where(
-          and(eq(developerWebhooks.id, input.id), eq(developerWebhooks.merchantId, ctx.user.id))
+          and(eq(developerWebhooks.id, input.id), eq(developerWebhooks.merchantId, String(ctx.user.id)))
         );
       return { success: true };
     }),
@@ -188,7 +188,7 @@ const webhookRouter = router({
         .update(developerWebhooks)
         .set({ signingSecret: newSecret, updatedAt: new Date() })
         .where(
-          and(eq(developerWebhooks.id, input.id), eq(developerWebhooks.merchantId, ctx.user.id))
+          and(eq(developerWebhooks.id, input.id), eq(developerWebhooks.merchantId, String(ctx.user.id)))
         );
       return { signingSecret: newSecret };
     }),
@@ -206,7 +206,7 @@ const deliveryLogRouter = router({
       })
     )
     .query(async ({ ctx, input }) => {
-      const conditions = [eq(developerWebhookDeliveries.merchantId, ctx.user.id)];
+      const conditions = [eq(developerWebhookDeliveries.merchantId, String(ctx.user.id))];
       if (input.webhookId) {
         conditions.push(eq(developerWebhookDeliveries.webhookId, input.webhookId));
       }
@@ -233,7 +233,7 @@ const deliveryLogRouter = router({
         .where(
           and(
             eq(developerWebhookDeliveries.id, input.deliveryId),
-            eq(developerWebhookDeliveries.merchantId, ctx.user.id)
+            eq(developerWebhookDeliveries.merchantId, String(ctx.user.id))
           )
         );
       return { success: true };
@@ -242,7 +242,7 @@ const deliveryLogRouter = router({
   stats: protectedProcedure
     .input(z.object({ webhookId: z.string().optional() }))
     .query(async ({ ctx, input }) => {
-      const conditions = [eq(developerWebhookDeliveries.merchantId, ctx.user.id)];
+      const conditions = [eq(developerWebhookDeliveries.merchantId, String(ctx.user.id))];
       if (input.webhookId) {
         conditions.push(eq(developerWebhookDeliveries.webhookId, input.webhookId));
       }
@@ -265,7 +265,7 @@ const sagaRouter = router({
       .select()
       .from(sagaInstances)
       .where(
-        and(eq(sagaInstances.merchantId, ctx.user.id), eq(sagaInstances.status, "running"))
+        and(eq(sagaInstances.merchantId, String(ctx.user.id)), eq(sagaInstances.status, "running"))
       )
       .orderBy(desc(sagaInstances.startedAt))
       .limit(20);
@@ -281,7 +281,7 @@ const sagaRouter = router({
       })
     )
     .query(async ({ ctx, input }) => {
-      const conditions = [eq(sagaInstances.merchantId, ctx.user.id)];
+      const conditions = [eq(sagaInstances.merchantId, String(ctx.user.id))];
       if (input.sagaType) conditions.push(eq(sagaInstances.sagaType, input.sagaType));
       if (input.status) conditions.push(eq(sagaInstances.status, input.status));
       return db
@@ -320,7 +320,7 @@ const sagaRouter = router({
       await db.insert(sagaInstances).values({
         id,
         sagaType: input.sagaType,
-        merchantId: ctx.user.id,
+        merchantId: String(ctx.user.id),
         status: "running",
         currentStep: 0,
         totalSteps: steps.length,
@@ -342,7 +342,7 @@ const sagaRouter = router({
         p99: sql<number>`percentile_cont(0.99) within group (order by duration_ms)::int`,
       })
       .from(sagaInstances)
-      .where(eq(sagaInstances.merchantId, ctx.user.id))
+      .where(eq(sagaInstances.merchantId, String(ctx.user.id)))
       .groupBy(sagaInstances.sagaType, sagaInstances.status);
     return rows;
   }),
@@ -353,7 +353,7 @@ const sagaRouter = router({
       return db
         .select()
         .from(sagaInstances)
-        .where(eq(sagaInstances.merchantId, ctx.user.id))
+        .where(eq(sagaInstances.merchantId, String(ctx.user.id)))
         .orderBy(desc(sagaInstances.startedAt))
         .limit(input.limit);
     }),
@@ -415,7 +415,7 @@ const costCentreRouter = router({
     return db
       .select()
       .from(costCentres)
-      .where(eq(costCentres.merchantId, ctx.user.id))
+      .where(eq(costCentres.merchantId, String(ctx.user.id)))
       .orderBy(desc(costCentres.createdAt));
   }),
 
@@ -433,7 +433,7 @@ const costCentreRouter = router({
       const id = `cc_${crypto.randomUUID()}`;
       await db.insert(costCentres).values({
         id,
-        merchantId: ctx.user.id,
+        merchantId: String(ctx.user.id),
         name: input.name,
         code: input.code,
         domain: input.domain,
@@ -459,7 +459,7 @@ const costCentreRouter = router({
       await db
         .update(costCentres)
         .set({ ...updates, updatedAt: new Date() })
-        .where(and(eq(costCentres.id, id), eq(costCentres.merchantId, ctx.user.id)));
+        .where(and(eq(costCentres.id, id), eq(costCentres.merchantId, String(ctx.user.id))));
       return { success: true };
     }),
 
@@ -468,14 +468,14 @@ const costCentreRouter = router({
     .mutation(async ({ ctx, input }) => {
       await db
         .delete(costCentres)
-        .where(and(eq(costCentres.id, input.id), eq(costCentres.merchantId, ctx.user.id)));
+        .where(and(eq(costCentres.id, input.id), eq(costCentres.merchantId, String(ctx.user.id))));
       return { success: true };
     }),
 
   getSummary: protectedProcedure.query(async ({ ctx }) => {
-    const rows = await db.select().from(costCentres).where(eq(costCentres.merchantId, ctx.user.id));
-    const totalBudget = rows.reduce((a, r) => a + parseFloat(r.monthlyBudget ?? "0"), 0);
-    const totalSpent = rows.reduce((a, r) => a + parseFloat(r.currentSpend ?? "0"), 0);
+    const rows = await db.select().from(costCentres).where(eq(costCentres.merchantId, String(ctx.user.id)));
+    const totalBudget = rows.reduce((a, r) => a + parseFloat(r.budgetAmount?.toString() ?? "0"), 0);
+    const totalSpent = rows.reduce((a, r) => a + parseFloat(r.spentAmount?.toString() ?? "0"), 0);
     return { totalBudget, totalSpent, count: rows.length };
   }),
 });
@@ -485,7 +485,7 @@ const beneficiaryRegistryRouter = router({
   list: protectedProcedure
     .input(z.object({ domain: z.string().optional(), search: z.string().optional() }))
     .query(async ({ ctx, input }) => {
-      const conditions = [eq(nexthubBeneficiaryRegistry.merchantId, ctx.user.id)];
+      const conditions = [eq(nexthubBeneficiaryRegistry.merchantId, String(ctx.user.id))];
       const rows = await db
         .select()
         .from(nexthubBeneficiaryRegistry)
@@ -521,7 +521,7 @@ const beneficiaryRegistryRouter = router({
       const id = `ben_${crypto.randomUUID()}`;
       await db.insert(nexthubBeneficiaryRegistry).values({
         id,
-        merchantId: ctx.user.id,
+        merchantId: String(ctx.user.id),
         fullName: input.fullName,
         nin: input.nin,
         bvn: input.bvn,
@@ -543,7 +543,7 @@ const beneficiaryRegistryRouter = router({
         .where(
           and(
             eq(nexthubBeneficiaryRegistry.id, input.id),
-            eq(nexthubBeneficiaryRegistry.merchantId, ctx.user.id)
+            eq(nexthubBeneficiaryRegistry.merchantId, String(ctx.user.id))
           )
         );
       return { success: true };
@@ -652,7 +652,7 @@ const domainQuotaRouter = router({
     return db
       .select()
       .from(nexthubDomainQuotas)
-      .where(eq(nexthubDomainQuotas.merchantId, ctx.user.id));
+      .where(eq(nexthubDomainQuotas.merchantId, String(ctx.user.id)));
   }),
 
   update: protectedProcedure
@@ -670,7 +670,7 @@ const domainQuotaRouter = router({
         .update(nexthubDomainQuotas)
         .set(updates)
         .where(
-          and(eq(nexthubDomainQuotas.id, id), eq(nexthubDomainQuotas.merchantId, ctx.user.id))
+          and(eq(nexthubDomainQuotas.id, id), eq(nexthubDomainQuotas.merchantId, String(ctx.user.id)))
         );
       return { success: true };
     }),

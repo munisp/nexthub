@@ -10,7 +10,7 @@
  */
 import { z } from "zod";
 import { protectedProcedure, router } from "../_core/trpc";
-import { getDb } from "../db";
+import { db } from "../db";
 import { nexthubRegulators, regulatorMagicTokens, regulatorSessions } from "../../drizzle/nexthub_schema";
 import { eq, desc, and, gt, isNull, sql } from "drizzle-orm";
 import { TRPCError } from "@trpc/server";
@@ -48,7 +48,6 @@ async function sendMagicLinkEmail(to: string, regulatorName: string, magicLink: 
 export const adminRegulatorsRouter = router({
   list: protectedProcedure.query(async ({ ctx }) => {
     if (ctx.user.role !== "admin") throw new TRPCError({ code: "FORBIDDEN", message: "Admin access required" });
-    const db = await getDb();
     const now = new Date();
     const regulators = await db.select().from(nexthubRegulators).orderBy(desc(nexthubRegulators.createdAt));
     const sessionCounts = await db
@@ -72,7 +71,6 @@ export const adminRegulatorsRouter = router({
     .input(z.object({ regulatorId: z.string(), origin: z.string().url() }))
     .mutation(async ({ ctx, input }) => {
       if (ctx.user.role !== "admin") throw new TRPCError({ code: "FORBIDDEN", message: "Admin access required" });
-      const db = await getDb();
       const [regulator] = await db.select().from(nexthubRegulators).where(eq(nexthubRegulators.id, input.regulatorId)).limit(1);
       if (!regulator) throw new TRPCError({ code: "NOT_FOUND", message: "Regulator not found" });
       if (!regulator.contactEmail) throw new TRPCError({ code: "BAD_REQUEST", message: "Regulator has no contact email" });
@@ -93,7 +91,6 @@ export const adminRegulatorsRouter = router({
     .input(z.object({ regulatorId: z.string() }))
     .mutation(async ({ ctx, input }) => {
       if (ctx.user.role !== "admin") throw new TRPCError({ code: "FORBIDDEN", message: "Admin access required" });
-      const db = await getDb();
       const [regulator] = await db.select().from(nexthubRegulators).where(eq(nexthubRegulators.id, input.regulatorId)).limit(1);
       if (!regulator) throw new TRPCError({ code: "NOT_FOUND", message: "Regulator not found" });
       if (!regulator.contactEmail) return { revokedSessions: 0, invalidatedTokens: 0, regulatorName: regulator.regulatorName };
@@ -107,7 +104,6 @@ export const adminRegulatorsRouter = router({
     .input(z.object({ regulatorId: z.string(), limit: z.number().int().min(1).max(100).default(20) }))
     .query(async ({ ctx, input }) => {
       if (ctx.user.role !== "admin") throw new TRPCError({ code: "FORBIDDEN", message: "Admin access required" });
-      const db = await getDb();
       const tokens = await db.select().from(regulatorMagicTokens)
         .where(eq(regulatorMagicTokens.regulatorId, input.regulatorId))
         .orderBy(desc(regulatorMagicTokens.createdAt)).limit(input.limit);
@@ -119,7 +115,6 @@ export const adminRegulatorsRouter = router({
 
   getStats: protectedProcedure.query(async ({ ctx }) => {
     if (ctx.user.role !== "admin") throw new TRPCError({ code: "FORBIDDEN", message: "Admin access required" });
-    const db = await getDb();
     const now = new Date();
     const [[total], [active], [activeSessions], [pendingTokens]] = await Promise.all([
       db.select({ count: sql<number>`count(*)::int` }).from(nexthubRegulators),

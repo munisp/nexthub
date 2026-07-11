@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { protectedProcedure, router } from "../_core/trpc";
-import { getDb } from "../db";
+import { db } from "../db";
 import { nexthubOracles } from "../../drizzle/nexthub_schema";
 import { eq, desc, and } from "drizzle-orm";
 import { TRPCError } from "@trpc/server";
@@ -14,7 +14,6 @@ export const nexthubOraclesRouter = router({
       isActive: z.boolean().optional(),
     }).optional())
     .query(async ({ input }) => {
-      const db = await getDb();
       const conditions = [];
       if (input?.partyIdType) {
         conditions.push(eq(nexthubOracles.partyIdType, input.partyIdType));
@@ -39,7 +38,6 @@ export const nexthubOraclesRouter = router({
       isDefault: z.boolean().default(false),
     }))
     .mutation(async ({ input }) => {
-      const db = await getDb();
       const oracleId = `oracle-${input.partyIdType.toLowerCase()}-${randomUUID().slice(0, 8)}`;
 
       // If setting as default, unset existing default for this partyIdType
@@ -79,7 +77,6 @@ export const nexthubOraclesRouter = router({
       isDefault: z.boolean().optional(),
     }))
     .mutation(async ({ input }) => {
-      const db = await getDb();
       const { oracleId, ...updates } = input;
 
       const existing = await db
@@ -110,7 +107,6 @@ export const nexthubOraclesRouter = router({
   deregister: protectedProcedure
     .input(z.object({ oracleId: z.string() }))
     .mutation(async ({ input }) => {
-      const db = await getDb();
       await db
         .update(nexthubOracles)
         .set({ isActive: 0, updatedAt: new Date() })
@@ -122,7 +118,6 @@ export const nexthubOraclesRouter = router({
   healthCheck: protectedProcedure
     .input(z.object({ oracleId: z.string() }))
     .mutation(async ({ input }) => {
-      const db = await getDb();
       const [oracle] = await db
         .select()
         .from(nexthubOracles)
@@ -155,7 +150,6 @@ export const nexthubOraclesRouter = router({
 
   // Get oracle statistics
   stats: protectedProcedure.query(async () => {
-    const db = await getDb();
     const all = await db.select().from(nexthubOracles);
     return {
       total: all.length,

@@ -257,6 +257,7 @@ const remittanceRouter = router({
       const [corridor] = await db
         .insert(remittanceCorridors)
         .values({
+          id: `${input.fromCurrency}-${input.toCurrency}-${input.fromCountry}-${input.toCountry}`,
           fromCurrency: input.fromCurrency,
           toCurrency: input.toCurrency,
           fromCountry: input.fromCountry,
@@ -443,7 +444,7 @@ const auditRouter = router({
         resourceId: z.string(),
         action: z.string(),
         outcome: z.enum(["SUCCESS", "FAILURE"]),
-        metadata: z.record(z.any()).optional(),
+        metadata: z.record(z.string(), z.any()).optional(),
         ipAddress: z.string().optional(),
         sessionId: z.string().optional(),
       })),

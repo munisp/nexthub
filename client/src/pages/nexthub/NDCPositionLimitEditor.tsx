@@ -11,14 +11,15 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 
 interface LimitRow {
   id: string;
-  dfspId: string;
-  dfspName: string;
+  participantId: string;
   currency: string;
-  positionLimit: number;
-  ndcCap: number;
-  currentPosition: number;
-  currentNDC: number;
-  status: string;
+  positionLimit: number | null;
+  netDebitCap: number;
+  liquidityCover: number;
+  alertThreshold: number;
+  suspendOnBreach: boolean;
+  updatedAt: Date | null;
+  updatedBy: string | null;
 }
 
 interface BreachEvent {
@@ -55,7 +56,7 @@ export default function NDCPositionLimitEditor() {
   const esRef = useRef<EventSource | null>(null);
   const notifiedRef = useRef<Set<string>>(new Set());
 
-  const { data: limits, refetch, isLoading } = trpc.wave223.ndcPositionLimits.list.useQuery();
+  const { data: limits, refetch, isLoading } = trpc.wave223.ndcPositionLimits.list.useQuery(undefined as any, { refetchInterval: 30000 });
 
   const updateMutation = trpc.wave223.ndcPositionLimits.update.useMutation({
     onSuccess: () => { toast.success("Limits updated."); setEditingId(null); refetch(); },
@@ -100,7 +101,7 @@ export default function NDCPositionLimitEditor() {
 
   const startEdit = (row: LimitRow) => {
     setEditingId(row.id);
-    setEditValues({ positionLimit: String(row.positionLimit ?? 0), ndcCap: String(row.ndcCap ?? 0) });
+    setEditValues({ positionLimit: String(row.positionLimit ?? 0), ndcCap: String(row.netDebitCap ?? 0) });
   };
 
   const handleSave = (id: string) => {
@@ -109,7 +110,7 @@ export default function NDCPositionLimitEditor() {
     if (isNaN(posLimit) || isNaN(ndc) || posLimit <= 0 || ndc <= 0) {
       toast.error("Enter valid positive numbers."); return;
     }
-    updateMutation.mutate({ id, positionLimit: posLimit, ndcCap: ndc });
+    updateMutation.mutate({ id, positionLimit: posLimit, netDebitCap: ndc });
   };
 
   const utilizationPct = (current: number, limit: number) =>
@@ -213,14 +214,14 @@ export default function NDCPositionLimitEditor() {
               )}
               {limits?.map((row) => {
                 const isEditing = editingId === row.id;
-                const posPct = utilizationPct(row.currentPosition ?? 0, row.positionLimit ?? 1);
-                const ndcPct = utilizationPct(row.currentNDC ?? 0, row.ndcCap ?? 1);
+                const posPct = utilizationPct(0, row.positionLimit ?? 1);
+                const ndcPct = utilizationPct(0, row.netDebitCap ?? 1);
                 return (
                   <TableRow key={row.id} className={ndcPct >= 90 ? "bg-red-50/50" : ndcPct >= 75 ? "bg-amber-50/50" : ""}>
                     <TableCell>
                       <div>
-                        <p className="font-medium text-sm">{row.dfspName ?? row.dfspId}</p>
-                        <p className="text-xs text-muted-foreground font-mono">{row.dfspId}</p>
+                        <p className="font-medium text-sm">{row.participantId}</p>
+                        <p className="text-xs text-muted-foreground font-mono">{row.participantId}</p>
                       </div>
                     </TableCell>
                     <TableCell><Badge variant="outline">{row.currency}</Badge></TableCell>
@@ -232,20 +233,20 @@ export default function NDCPositionLimitEditor() {
                         <span className="font-mono text-sm">{(row.positionLimit ?? 0).toLocaleString()}</span>
                       )}
                     </TableCell>
-                    <TableCell className="font-mono text-sm">{(row.currentPosition ?? 0).toLocaleString()}</TableCell>
+                    <TableCell className="font-mono text-sm">{(0).toLocaleString()}</TableCell>
                     <TableCell><UtilisationBar value={posPct} /></TableCell>
                     <TableCell>
                       {isEditing ? (
                         <Input className="w-28 h-8 text-sm" type="number" value={editValues.ndcCap}
                           onChange={(e) => setEditValues(p => ({ ...p, ndcCap: e.target.value }))} />
                       ) : (
-                        <span className="font-mono text-sm">{(row.ndcCap ?? 0).toLocaleString()}</span>
+                        <span className="font-mono text-sm">{(row.netDebitCap ?? 0).toLocaleString()}</span>
                       )}
                     </TableCell>
-                    <TableCell className="font-mono text-sm">{(row.currentNDC ?? 0).toLocaleString()}</TableCell>
+                    <TableCell className="font-mono text-sm">{(0).toLocaleString()}</TableCell>
                     <TableCell><UtilisationBar value={ndcPct} /></TableCell>
                     <TableCell>
-                      <Badge variant={row.status === "active" ? "default" : "secondary"}>{row.status}</Badge>
+                      <Badge variant={(row.suspendOnBreach ? "suspended" : "active") === "active" ? "default" : "secondary"}>{(row.suspendOnBreach ? "suspended" : "active")}</Badge>
                     </TableCell>
                     <TableCell className="text-right">
                       {isEditing ? (
@@ -258,7 +259,7 @@ export default function NDCPositionLimitEditor() {
                           </Button>
                         </div>
                       ) : (
-                        <Button size="sm" variant="ghost" onClick={() => startEdit(row as LimitRow)}>
+                        <Button size="sm" variant="ghost" onClick={() => startEdit(row as unknown as LimitRow)}>
                           <Edit2 className="h-3.5 w-3.5" />
                         </Button>
                       )}

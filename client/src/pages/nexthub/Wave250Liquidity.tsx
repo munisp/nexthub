@@ -253,7 +253,7 @@ export default function Wave250Liquidity() {
                           <AlertTriangle className="h-3 w-3 mr-1" />{a.alertLevel}
                         </Badge>
                       </TableCell>
-                      <TableCell className="text-xs max-w-xs truncate">{a.message}</TableCell>
+                      <TableCell className="text-xs max-w-xs truncate">{(a as any).message ?? a.alertLevel}</TableCell>
                       <TableCell className="text-xs">{a.createdAt ? new Date(a.createdAt).toLocaleString() : "—"}</TableCell>
                       <TableCell>
                         <Button size="sm" variant="outline" onClick={() => resolveAlert.mutate({ alertId: a.id })}>

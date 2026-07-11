@@ -6,7 +6,7 @@
  */
 import { z } from "zod";
 import { protectedProcedure, router } from "../_core/trpc";
-import { getDb } from "../db";
+import { db } from "../db";
 import { nexthubSecurityEvents, amlRules, nexthubDfsps } from "../../drizzle/nexthub_schema";
 import { eq, desc, sql, and, lt } from "drizzle-orm";
 import { TRPCError } from "@trpc/server";
@@ -26,7 +26,6 @@ export const nexthubSecurityRouter = router({
       dfspId: z.string().optional(),
     }))
     .query(async ({ input }) => {
-      const db = await getDb();
       const offset = (input.page - 1) * input.pageSize;
 
       const conditions = [];
@@ -66,7 +65,6 @@ export const nexthubSecurityRouter = router({
       metadata: z.string().optional(), // JSON
     }))
     .mutation(async ({ input }) => {
-      const db = await getDb();
       const [event] = await db.insert(nexthubSecurityEvents).values({
         eventType: input.eventType,
         severity: input.severity,
@@ -86,7 +84,6 @@ export const nexthubSecurityRouter = router({
       acknowledgedBy: z.string(),
     }))
     .mutation(async ({ input }) => {
-      const db = await getDb();
       const [updated] = await db.update(nexthubSecurityEvents)
         .set({
           acknowledged: true,
@@ -107,7 +104,6 @@ export const nexthubSecurityRouter = router({
       acknowledgedBy: z.string(),
     }))
     .mutation(async ({ input }) => {
-      const db = await getDb();
       const updated = await db.update(nexthubSecurityEvents)
         .set({
           acknowledged: true,
@@ -128,7 +124,6 @@ export const nexthubSecurityRouter = router({
   /** List all AML rules */
   listAmlRules: protectedProcedure
     .query(async () => {
-      const db = await getDb();
       return db.select().from(amlRules)
         .orderBy(amlRules.ruleCategory, amlRules.ruleName);
     }),
@@ -144,7 +139,6 @@ export const nexthubSecurityRouter = router({
       createdBy: z.string().optional(),
     }))
     .mutation(async ({ input }) => {
-      const db = await getDb();
       const [rule] = await db.insert(amlRules).values({
         ruleName: input.ruleName,
         ruleCategory: input.ruleCategory,
@@ -163,7 +157,6 @@ export const nexthubSecurityRouter = router({
       isEnabled: z.boolean(),
     }))
     .mutation(async ({ input }) => {
-      const db = await getDb();
       const [updated] = await db.update(amlRules)
         .set({ isEnabled: input.isEnabled, updatedAt: new Date() })
         .where(eq(amlRules.id, input.ruleId))
@@ -179,7 +172,6 @@ export const nexthubSecurityRouter = router({
   getExpiringCertificates: protectedProcedure
     .input(z.object({ withinDays: z.number().int().min(1).max(90).default(30) }))
     .query(async ({ input }) => {
-      const db = await getDb();
       const cutoff = new Date();
       cutoff.setDate(cutoff.getDate() + input.withinDays);
 
@@ -202,7 +194,6 @@ export const nexthubSecurityRouter = router({
   /** Get security dashboard statistics */
   getDashboardStats: protectedProcedure
     .query(async () => {
-      const db = await getDb();
 
       const [eventStats] = await db.select({
         totalUnacknowledged: sql<number>`count(*) filter (where acknowledged = false)::int`,

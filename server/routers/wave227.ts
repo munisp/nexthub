@@ -10,7 +10,7 @@
  */
 import { z } from "zod";
 import { protectedProcedure, publicProcedure, router } from "../_core/trpc";
-import { getDb } from "../db";
+import { db } from "../db";
 import {
   nexthubRegulators,
   regulatorDocuments,
@@ -35,7 +35,6 @@ export const regulatorDocsRouter = router({
       documentType: z.enum(["audit_report", "compliance_notice", "data_request", "inspection_order", "other"]),
     }))
     .mutation(async ({ input }) => {
-      const db = getDb();
       const [reg] = await db.select().from(nexthubRegulators).where(eq(nexthubRegulators.id, input.regulatorId)).limit(1);
       if (!reg) throw new TRPCError({ code: "NOT_FOUND", message: "Regulator not found" });
 
@@ -60,7 +59,6 @@ export const regulatorDocsRouter = router({
   confirmUpload: protectedProcedure
     .input(z.object({ docId: z.string() }))
     .mutation(async ({ input }) => {
-      const db = getDb();
       await db.update(regulatorDocuments)
         .set({ status: "submitted", uploadedAt: new Date() })
         .where(eq(regulatorDocuments.id, input.docId));
@@ -71,7 +69,6 @@ export const regulatorDocsRouter = router({
   list: protectedProcedure
     .input(z.object({ regulatorId: z.string(), limit: z.number().int().min(1).max(100).default(50) }))
     .query(async ({ input }) => {
-      const db = getDb();
       return db.select().from(regulatorDocuments)
         .where(eq(regulatorDocuments.regulatorId, input.regulatorId))
         .orderBy(desc(regulatorDocuments.uploadedAt))
@@ -86,7 +83,6 @@ export const regulatorDocsRouter = router({
       reviewNote: z.string().max(500).optional(),
     }))
     .mutation(async ({ input }) => {
-      const db = getDb();
       await db.update(regulatorDocuments)
         .set({ status: input.status, reviewNote: input.reviewNote ?? null, reviewedAt: new Date() })
         .where(eq(regulatorDocuments.id, input.docId));
@@ -108,7 +104,6 @@ export const ndcBreachRouter = router({
       windowId: z.string().optional(),
     }))
     .mutation(async ({ input }) => {
-      const db = getDb();
 
       // Record the breach event
       const [event] = await db.insert(ndcBreachEvents).values({
@@ -145,7 +140,6 @@ export const ndcBreachRouter = router({
       unresolved: z.boolean().default(false),
     }))
     .query(async ({ input }) => {
-      const db = getDb();
       const conditions = input.unresolved
         ? [sql`${ndcBreachEvents.resolvedAt} IS NULL`]
         : [];
@@ -159,7 +153,6 @@ export const ndcBreachRouter = router({
   resolve: protectedProcedure
     .input(z.object({ eventId: z.string(), resolution: z.string().max(500).optional() }))
     .mutation(async ({ input }) => {
-      const db = getDb();
       await db.update(ndcBreachEvents)
         .set({ resolvedAt: new Date(), resolution: input.resolution ?? "Manually resolved" })
         .where(eq(ndcBreachEvents.id, input.eventId));

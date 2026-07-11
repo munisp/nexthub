@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { protectedProcedure, router } from "../_core/trpc";
-import { getDb } from "../db";
+import { db } from "../db";
 import { nexthubPispConsents } from "../../drizzle/nexthub_schema";
 import { eq, desc, and } from "drizzle-orm";
 import { TRPCError } from "@trpc/server";
@@ -16,7 +16,6 @@ export const nexthubPISPRouter = router({
       offset: z.number().int().min(0).default(0),
     }).optional())
     .query(async ({ input }) => {
-      const db = await getDb();
       const conditions = [];
       if (input?.pispId) conditions.push(eq(nexthubPispConsents.pispId, input.pispId));
       if (input?.dfspId) conditions.push(eq(nexthubPispConsents.dfspId, input.dfspId));
@@ -35,7 +34,6 @@ export const nexthubPISPRouter = router({
   getConsent: protectedProcedure
     .input(z.object({ consentId: z.string() }))
     .query(async ({ input }) => {
-      const db = await getDb();
       const [row] = await db
         .select()
         .from(nexthubPispConsents)
@@ -55,7 +53,6 @@ export const nexthubPISPRouter = router({
       reason: z.string().optional(),
     }))
     .mutation(async ({ input }) => {
-      const db = await getDb();
       const [existing] = await db
         .select()
         .from(nexthubPispConsents)
@@ -86,7 +83,6 @@ export const nexthubPISPRouter = router({
 
   // PISP consent statistics
   stats: protectedProcedure.query(async () => {
-    const db = await getDb();
     const all = await db.select().from(nexthubPispConsents);
     return {
       total: all.length,

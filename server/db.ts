@@ -2896,7 +2896,7 @@ export const db = new Proxy({} as ReturnType<typeof drizzle>, {
 // ─── Keycloak Event Logging ───────────────────────────────────────────────────
 
 // In-memory geo cache to avoid hammering ip-api.com (free tier: 45 req/min)
-const _geoCache = new Map<string, { country: string; city: string; ts: number }>();
+const _geoCache = new Map<string, { country: string | null; city: string | null; ts: number }>();
 const GEO_CACHE_TTL_MS = 60 * 60 * 1000; // 1 hour
 const GEO_SKIP_PREFIXES = ["10.", "192.168.", "172.16.", "172.17.", "172.18.", "172.19.", "172.20.", "172.21.", "172.22.", "172.23.", "172.24.", "172.25.", "172.26.", "172.27.", "172.28.", "172.29.", "172.30.", "172.31."];
 

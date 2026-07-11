@@ -6,7 +6,7 @@
  * When utilisation >= 0.9, fires an owner notification.
  */
 import type { Request, Response } from "express";
-import { getDb } from "./db";
+import { db } from "./db";
 import { nexthubParticipantLimits, nexthubParticipantPositions, nexthubDfsps } from "../drizzle/schema";
 import { eq, sql } from "drizzle-orm";
 import { notifyOwner } from "./_core/notification";
@@ -42,7 +42,6 @@ export async function ndcBreachStreamHandler(req: Request, res: Response) {
 
   const poll = async () => {
     try {
-      const db = await getDb();
 
       // Join positions with limits and dfsp names
       const rows = await db

@@ -7,7 +7,7 @@
  */
 import { z } from "zod";
 import { protectedProcedure, router } from "../_core/trpc";
-import { getDb } from "../db";
+import { db } from "../db";
 import { reconciliationExceptions, settlementWindows } from "../../drizzle/nexthub_schema";
 import { eq, desc, sql, and, isNull } from "drizzle-orm";
 import { TRPCError } from "@trpc/server";
@@ -32,7 +32,6 @@ export const nexthubReconciliationRouter = router({
       windowId: z.string().optional(),
     }))
     .query(async ({ input }) => {
-      const db = await getDb();
       const offset = (input.page - 1) * input.pageSize;
 
       const conditions = [];
@@ -66,7 +65,6 @@ export const nexthubReconciliationRouter = router({
   getException: protectedProcedure
     .input(z.object({ exceptionId: z.string() }))
     .query(async ({ input }) => {
-      const db = await getDb();
       const [exception] = await db.select()
         .from(reconciliationExceptions)
         .where(eq(reconciliationExceptions.id, input.exceptionId))
@@ -90,7 +88,6 @@ export const nexthubReconciliationRouter = router({
       description: z.string(),
     }))
     .mutation(async ({ input }) => {
-      const db = await getDb();
 
       const discrepancyAmountKobo = (input.hubAmountKobo !== undefined && input.railAmountKobo !== undefined)
         ? Math.abs(input.hubAmountKobo - input.railAmountKobo)
@@ -124,7 +121,6 @@ export const nexthubReconciliationRouter = router({
       status: z.enum(["AUTO_RESOLVED", "CLOSED"]).default("CLOSED"),
     }))
     .mutation(async ({ input }) => {
-      const db = await getDb();
 
       const [updated] = await db.update(reconciliationExceptions)
         .set({
@@ -148,7 +144,6 @@ export const nexthubReconciliationRouter = router({
       notes: z.string().optional(),
     }))
     .mutation(async ({ input }) => {
-      const db = await getDb();
 
       const [updated] = await db.update(reconciliationExceptions)
         .set({
@@ -168,7 +163,6 @@ export const nexthubReconciliationRouter = router({
   /** Get reconciliation dashboard statistics */
   getStats: protectedProcedure
     .query(async () => {
-      const db = await getDb();
 
       const [stats] = await db.select({
         totalOpen: sql<number>`count(*) filter (where status = 'OPEN')::int`,
@@ -193,7 +187,6 @@ export const nexthubReconciliationRouter = router({
   /** Auto-resolve exceptions that have passed their SLA (called by Temporal heartbeat) */
   autoResolveSlaBreaches: protectedProcedure
     .mutation(async () => {
-      const db = await getDb();
 
       const resolved = await db.update(reconciliationExceptions)
         .set({

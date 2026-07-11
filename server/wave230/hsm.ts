@@ -31,7 +31,9 @@ async function ensureKeystoreLoaded(): Promise<void> {
     const rows = await db.select().from(jwsKeys).where(eq(jwsKeys.isActive, true));
     for (const row of rows) {
       try {
-        await keystore.add(JSON.parse(row.privateJwk), "json");
+        if (row.privateKeyPem) {
+          await keystore.add(row.privateKeyPem, "pem", { kid: row.id, alg: row.algorithm });
+        }
       } catch {
         // key may already be in store
       }
@@ -69,17 +71,18 @@ export async function generateDfspKeyPair(
   if (crv) props.crv = crv;
 
   const key = await keystore.generate(keyType, keySize ?? crv ?? "P-256", props);
-  const privateJwk = key.toJSON(true);   // include private material
-  const publicJwk  = key.toJSON(false);  // public only
+  const privateKeyPem = key.toPEM(true);   // include private material
+  const publicKeyPem  = key.toPEM(false);  // public only
+  const publicJwk     = key.toJSON(false); // JWK for API response
 
-  // Persist to DB
+  // Persist to DB using schema-correct column names
   await db.insert(jwsKeys).values({
     id: key.kid,
     dfspId,
     algorithm,
     keyType,
-    publicJwk: JSON.stringify(publicJwk),
-    privateJwk: JSON.stringify(privateJwk),
+    publicKeyPem,
+    privateKeyPem,
     isActive: true,
     createdAt: new Date(),
     expiresAt: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000), // 1 year
@@ -106,14 +109,11 @@ export async function signPayload(
     throw new Error(`No active JWS key found for DFSP ${dfspId}`);
   }
 
-  const key = await keystore.get(row[0].id);
+  let key = keystore.get(row[0].id);
   if (!key) {
-    // Key not in memory store yet — add it
-    const loaded = await keystore.add(JSON.parse(row[0].privateJwk), "json");
-    const body = typeof payload === "string" ? payload : JSON.stringify(payload);
-    const sign = jose.JWS.createSign({ format: "compact", fields: { alg: row[0].algorithm } }, loaded);
-    sign.update(body, "utf8");
-    return sign.final() as unknown as string;
+    // Key not in memory store yet — add it from PEM
+    if (!row[0].privateKeyPem) throw new Error(`No private key PEM for DFSP ${dfspId}`);
+    key = await keystore.add(row[0].privateKeyPem, "pem", { kid: row[0].id, alg: row[0].algorithm });
   }
 
   const body = typeof payload === "string" ? payload : JSON.stringify(payload);
@@ -140,7 +140,7 @@ export async function verifySignature(
 
   try {
     const ks = jose.JWK.createKeyStore();
-    await ks.add(JSON.parse(row[0].publicJwk), "json");
+    await ks.add(row[0].publicKeyPem, "pem", { kid: row[0].id, alg: row[0].algorithm });
     const result = await jose.JWS.createVerify(ks).verify(token);
     return { valid: true, payload: JSON.parse(result.payload.toString()) };
   } catch {
@@ -155,7 +155,10 @@ export async function getPublicJwk(dfspId: string): Promise<object | null> {
     .where(and(eq(jwsKeys.dfspId, dfspId), eq(jwsKeys.isActive, true)))
     .limit(1);
   if (!row.length) return null;
-  return JSON.parse(row[0].publicJwk);
+  // Convert PEM to JWK for API response
+  const ks = jose.JWK.createKeyStore();
+  const key = await ks.add(row[0].publicKeyPem, "pem", { kid: row[0].id, alg: row[0].algorithm });
+  return key.toJSON(false);
 }
 
 // ─── Key rotation ────────────────────────────────────────────────────────────

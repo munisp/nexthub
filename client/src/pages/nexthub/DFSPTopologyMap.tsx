@@ -95,8 +95,8 @@ function TopologyCanvas({ nodes, edges }: { nodes: DFSPNode[]; edges: Array<{ fr
 export default function DFSPTopologyMap() {
   const { data: topology, refetch, isLoading } = trpc.wave223.dfspTopology.get.useQuery();
 
-  const nodes: DFSPNode[] = topology?.nodes ?? [];
-  const edges = topology?.edges ?? [];
+  const nodes: DFSPNode[] = topology?.dfsps ?? [];
+  const edges = ((topology?.edges ?? []) as any[]) ?? [];
 
   const statusCounts = nodes.reduce((acc, n) => {
     acc[n.status ?? "unknown"] = (acc[n.status ?? "unknown"] ?? 0) + 1;

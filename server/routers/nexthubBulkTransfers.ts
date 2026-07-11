@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { protectedProcedure, router } from "../_core/trpc";
-import { getDb } from "../db";
+import { db } from "../db";
 import { nexthubBulkTransfers } from "../../drizzle/nexthub_schema";
 import { eq, desc, and, gte, lte } from "drizzle-orm";
 import { TRPCError } from "@trpc/server";
@@ -18,7 +18,6 @@ export const nexthubBulkTransfersRouter = router({
       offset: z.number().int().min(0).default(0),
     }).optional())
     .query(async ({ input }) => {
-      const db = await getDb();
       const conditions = [];
       if (input?.state) conditions.push(eq(nexthubBulkTransfers.state, input.state));
       if (input?.payerFsp) conditions.push(eq(nexthubBulkTransfers.payerFsp, input.payerFsp));
@@ -41,7 +40,6 @@ export const nexthubBulkTransfersRouter = router({
   getById: protectedProcedure
     .input(z.object({ bulkTransferId: z.string() }))
     .query(async ({ input }) => {
-      const db = await getDb();
       const [row] = await db
         .select()
         .from(nexthubBulkTransfers)
@@ -56,7 +54,6 @@ export const nexthubBulkTransfersRouter = router({
 
   // Summary statistics for the dashboard
   stats: protectedProcedure.query(async () => {
-    const db = await getDb();
     const all = await db.select().from(nexthubBulkTransfers);
     const total = all.length;
     const byState = Object.fromEntries(

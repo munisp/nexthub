@@ -8,7 +8,7 @@
  */
 import { z } from "zod";
 import { router, protectedProcedure } from "../_core/trpc";
-import { getDb } from "../db";
+import { db } from "../db";
 import { sql, eq, desc, and, gte, lte } from "drizzle-orm";
 import {
   auditLogs,
@@ -39,8 +39,6 @@ const auditLogsRouter = router({
       toDate: z.string().optional(),
     }))
     .query(async ({ input }) => {
-      const db = await getDb();
-      if (!db) return { rows: [], total: 0 };
       const conditions: any[] = [];
       if (input.action) conditions.push(eq(auditLogs.action, input.action));
       if (input.actor) conditions.push(eq(auditLogs.userId, input.actor));
@@ -60,8 +58,6 @@ const revenueAnalyticsRouter = router({
   getSummary: protectedProcedure
     .input(z.object({ period: z.enum(["7d", "30d", "90d", "1y"]).default("30d") }))
     .query(async ({ input }) => {
-      const db = await getDb();
-      if (!db) return { grossRevenue: 0, totalFees: 0, successfulTxns: 0, failedTxns: 0, activeMerchants: 0, netRevenue: 0 };
       const days = { "7d": 7, "30d": 30, "90d": 90, "1y": 365 }[input.period];
       const since = new Date(Date.now() - days * 86400_000);
       const result = await db.execute(sql`
@@ -86,8 +82,6 @@ const revenueAnalyticsRouter = router({
   getBreakdown: protectedProcedure
     .input(z.object({ period: z.enum(["7d", "30d", "90d", "1y"]).default("30d"), groupBy: z.enum(["day", "week", "month"]).default("day") }))
     .query(async ({ input }) => {
-      const db = await getDb();
-      if (!db) return [];
       const days = { "7d": 7, "30d": 30, "90d": 90, "1y": 365 }[input.period];
       const since = new Date(Date.now() - days * 86400_000);
       const result = await db.execute(sql`
@@ -104,8 +98,6 @@ const revenueAnalyticsRouter = router({
   getTopMerchants: protectedProcedure
     .input(z.object({ period: z.enum(["7d", "30d", "90d", "1y"]).default("30d"), limit: z.number().min(1).max(50).default(10) }))
     .query(async ({ input }) => {
-      const db = await getDb();
-      if (!db) return [];
       const days = { "7d": 7, "30d": 30, "90d": 90, "1y": 365 }[input.period];
       const since = new Date(Date.now() - days * 86400_000);
       const result = await db.execute(sql`
@@ -129,8 +121,6 @@ const fxRatesRouter = router({
   list: protectedProcedure
     .input(z.object({ baseCurrency: z.string().optional(), quoteCurrency: z.string().optional() }))
     .query(async ({ input }) => {
-      const db = await getDb();
-      if (!db) return [];
       const conditions: any[] = [];
       if (input.baseCurrency) conditions.push(eq(fxRates.baseCurrency, input.baseCurrency));
       if (input.quoteCurrency) conditions.push(eq(fxRates.targetCurrency, input.quoteCurrency));
@@ -146,8 +136,6 @@ const fxRatesRouter = router({
       source: z.string().default("manual"),
     }))
     .mutation(async ({ input }) => {
-      const db = await getDb();
-      if (!db) throw new Error("DB unavailable");
       const [row] = await db.insert(fxRates).values({
         baseCurrency: input.baseCurrency,
         targetCurrency: input.quoteCurrency,
@@ -160,8 +148,6 @@ const fxRatesRouter = router({
   update: protectedProcedure
     .input(z.object({ id: z.number(), rate: z.number().positive() }))
     .mutation(async ({ input }) => {
-      const db = await getDb();
-      if (!db) throw new Error("DB unavailable");
       const [row] = await db.update(fxRates).set({ rate: String(input.rate), fetchedAt: new Date() })
         .where(eq(fxRates.id, input.id)).returning();
       return row;
@@ -173,8 +159,6 @@ const apiRateLimitsRouter = router({
   list: protectedProcedure
     .input(z.object({ merchantId: z.string().optional() }))
     .query(async ({ input }) => {
-      const db = await getDb();
-      if (!db) return [];
       const conditions: any[] = [];
       if (input.merchantId) conditions.push(eq(apiRateLimitRules.merchantId, input.merchantId));
       return db.select().from(apiRateLimitRules)
@@ -190,8 +174,6 @@ const apiRateLimitsRouter = router({
       isActive: z.boolean().optional(),
     }))
     .mutation(async ({ input }) => {
-      const db = await getDb();
-      if (!db) throw new Error("DB unavailable");
       const { id, ...rest } = input;
       const [row] = await db.update(apiRateLimitRules)
         .set({ ...rest, updatedAt: new Date() } as any)
@@ -201,8 +183,6 @@ const apiRateLimitsRouter = router({
   getUsage: protectedProcedure
     .input(z.object({ merchantId: z.string().optional() }))
     .query(async ({ input }) => {
-      const db = await getDb();
-      if (!db) return [];
       const since = new Date(Date.now() - 60_000);
       const result = await db.execute(sql`
         SELECT resource AS endpoint, COUNT(*) AS requests_last_minute
@@ -221,8 +201,6 @@ const notificationPreferencesRouter = router({
   get: protectedProcedure
     .input(z.object({ merchantId: z.string() }))
     .query(async ({ input }) => {
-      const db = await getDb();
-      if (!db) return null;
       const [row] = await db.select().from(realtimeNotificationPreferences)
         .where(eq(realtimeNotificationPreferences.merchantId, input.merchantId));
       return row ?? null;
@@ -237,8 +215,6 @@ const notificationPreferencesRouter = router({
       digestFrequency: z.enum(["realtime", "hourly", "daily", "weekly"]).default("realtime"),
     }))
     .mutation(async ({ input }) => {
-      const db = await getDb();
-      if (!db) throw new Error("DB unavailable");
       const existing = await db.select().from(realtimeNotificationPreferences)
         .where(eq(realtimeNotificationPreferences.merchantId, input.merchantId));
       const values = {
@@ -268,8 +244,6 @@ const posTerminalsRouter = router({
   list: protectedProcedure
     .input(z.object({ merchantId: z.string().optional(), status: z.string().optional() }))
     .query(async ({ input }) => {
-      const db = await getDb();
-      if (!db) return [];
       const conditions: any[] = [];
       if (input.merchantId) conditions.push(eq(posTerminals.merchantId, input.merchantId));
       if (input.status) conditions.push(eq(posTerminals.status, input.status as any));
@@ -286,8 +260,6 @@ const posTerminalsRouter = router({
       location: z.string().optional(),
     }))
     .mutation(async ({ input }) => {
-      const db = await getDb();
-      if (!db) throw new Error("DB unavailable");
       const id = `pos_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
       const [row] = await db.insert(posTerminals).values({
         id,
@@ -305,8 +277,6 @@ const posTerminalsRouter = router({
   delete: protectedProcedure
     .input(z.object({ id: z.string() }))
     .mutation(async ({ input }) => {
-      const db = await getDb();
-      if (!db) throw new Error("DB unavailable");
       await db.delete(posTerminals).where(eq(posTerminals.id, input.id));
       return { success: true };
     }),
@@ -317,8 +287,6 @@ const settlementBanksExtRouter = router({
   list: protectedProcedure
     .input(z.object({ status: z.string().optional() }))
     .query(async ({ input }) => {
-      const db = await getDb();
-      if (!db) return [];
       const conditions: any[] = [];
       if (input.status) conditions.push(eq(settlementBanks.status, input.status));
       return db.select().from(settlementBanks)
@@ -339,8 +307,6 @@ const settlementBanksExtRouter = router({
       isNipEnabled: z.boolean().default(true),
     }))
     .mutation(async ({ input }) => {
-      const db = await getDb();
-      if (!db) throw new Error("DB unavailable");
       const id = `sb_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
       const [row] = await db.insert(settlementBanks).values({
         id, ...input, status: "active", createdAt: new Date(), updatedAt: new Date(),
@@ -350,8 +316,6 @@ const settlementBanksExtRouter = router({
   setStatus: protectedProcedure
     .input(z.object({ id: z.string(), status: z.enum(["active", "inactive", "suspended"]) }))
     .mutation(async ({ input }) => {
-      const db = await getDb();
-      if (!db) throw new Error("DB unavailable");
       const [row] = await db.update(settlementBanks)
         .set({ status: input.status, updatedAt: new Date() } as any)
         .where(eq(settlementBanks.id, input.id)).returning();
@@ -360,20 +324,16 @@ const settlementBanksExtRouter = router({
   delete: protectedProcedure
     .input(z.object({ id: z.string() }))
     .mutation(async ({ input }) => {
-      const db = await getDb();
-      if (!db) throw new Error("DB unavailable");
       await db.delete(settlementBanks).where(eq(settlementBanks.id, input.id));
       return { success: true };
     }),
 });
 
 // ─── 8. KYC Documents ─────────────────────────────────────────────────────
-const kycDocumentsRouter = router({
+export const kycDocumentsRouter = router({
   list: protectedProcedure
     .input(z.object({ merchantId: z.string().optional(), documentType: z.string().optional() }))
     .query(async ({ input }) => {
-      const db = await getDb();
-      if (!db) return [];
       const conditions: any[] = [];
       if (input.merchantId) conditions.push(eq(kybDocuments.merchantId, input.merchantId));
       if (input.documentType) conditions.push(eq(kybDocuments.documentType, input.documentType));
@@ -391,8 +351,6 @@ const kycDocumentsRouter = router({
       verificationId: z.string().optional(),
     }))
     .mutation(async ({ input }) => {
-      const db = await getDb();
-      if (!db) throw new Error("DB unavailable");
       const buffer = Buffer.from(input.fileBase64, "base64");
       const fileKey = `kyc/${input.merchantId}/${input.documentType}/${Date.now()}-${input.fileName}`;
       const { url } = await storagePut(fileKey, buffer, input.mimeType);
@@ -411,20 +369,16 @@ const kycDocumentsRouter = router({
   delete: protectedProcedure
     .input(z.object({ id: z.string() }))
     .mutation(async ({ input }) => {
-      const db = await getDb();
-      if (!db) throw new Error("DB unavailable");
       await db.delete(kybDocuments).where(eq(kybDocuments.id, input.id));
       return { success: true };
     }),
 });
 
 // ─── 9. Merchant Verification ─────────────────────────────────────────────
-const merchantVerificationRouter = router({
+export const merchantVerificationRouter = router({
   list: protectedProcedure
     .input(z.object({ status: z.string().optional(), limit: z.number().default(50), offset: z.number().default(0) }))
     .query(async ({ input }) => {
-      const db = await getDb();
-      if (!db) return { rows: [], total: 0 };
       const conditions: any[] = [];
       if (input.status) conditions.push(eq(kybVerifications.status, input.status));
       const where = conditions.length ? and(...conditions) : undefined;
@@ -436,8 +390,6 @@ const merchantVerificationRouter = router({
   startReview: protectedProcedure
     .input(z.object({ id: z.string(), reviewerId: z.string() }))
     .mutation(async ({ input }) => {
-      const db = await getDb();
-      if (!db) throw new Error("DB unavailable");
       const [row] = await db.update(kybVerifications)
         .set({ status: "in_review", initiatedBy: input.reviewerId, updatedAt: new Date() } as any)
         .where(eq(kybVerifications.verificationId, input.id)).returning();
@@ -446,8 +398,6 @@ const merchantVerificationRouter = router({
   approve: protectedProcedure
     .input(z.object({ id: z.string(), reviewerId: z.string(), notes: z.string().optional() }))
     .mutation(async ({ input }) => {
-      const db = await getDb();
-      if (!db) throw new Error("DB unavailable");
       const [row] = await db.update(kybVerifications)
         .set({ status: "approved", initiatedBy: input.reviewerId, updatedAt: new Date() } as any)
         .where(eq(kybVerifications.verificationId, input.id)).returning();
@@ -457,8 +407,6 @@ const merchantVerificationRouter = router({
   reject: protectedProcedure
     .input(z.object({ id: z.string(), reviewerId: z.string(), reason: z.string() }))
     .mutation(async ({ input }) => {
-      const db = await getDb();
-      if (!db) throw new Error("DB unavailable");
       const [row] = await db.update(kybVerifications)
         .set({ status: "rejected", initiatedBy: input.reviewerId, updatedAt: new Date() } as any)
         .where(eq(kybVerifications.verificationId, input.id)).returning();
@@ -468,12 +416,10 @@ const merchantVerificationRouter = router({
 });
 
 // ─── 10. NDC / Position Limits ────────────────────────────────────────────
-const ndcPositionLimitsRouter = router({
+export const ndcPositionLimitsRouter = router({
   list: protectedProcedure
     .input(z.object({ participantId: z.string().optional() }))
     .query(async ({ input }) => {
-      const db = await getDb();
-      if (!db) return [];
       const conditions: any[] = [];
       if (input.participantId) conditions.push(eq(nexthubParticipantLimits.participantId, input.participantId));
       return db.select().from(nexthubParticipantLimits)
@@ -490,8 +436,6 @@ const ndcPositionLimitsRouter = router({
       currency: z.string().optional(),
     }))
     .mutation(async ({ input }) => {
-      const db = await getDb();
-      if (!db) throw new Error("DB unavailable");
       const { id, ...rest } = input;
       const [row] = await db.update(nexthubParticipantLimits)
         .set({ ...rest, updatedAt: new Date() } as any)
@@ -501,7 +445,7 @@ const ndcPositionLimitsRouter = router({
 });
 
 // ─── 11. Bulk Transfers ───────────────────────────────────────────────────
-const bulkTransfersRouter = router({
+export const bulkTransfersRouter = router({
   validate: protectedProcedure
     .input(z.object({
       transfers: z.array(z.object({
@@ -544,10 +488,8 @@ const bulkTransfersRouter = router({
 });
 
 // ─── 12. DFSP Topology ────────────────────────────────────────────────────
-const dfspTopologyRouter = router({
+export const dfspTopologyRouter = router({
   get: protectedProcedure.query(async () => {
-    const db = await getDb();
-    if (!db) return { dfsps: [], participants: [], edges: [] };
     const dfsps = await db.select().from(nexthubDfsps).orderBy(nexthubDfsps.dfspName);
     const participants = await db.select().from(nexthubParticipants).limit(200);
     return {

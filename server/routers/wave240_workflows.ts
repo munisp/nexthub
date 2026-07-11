@@ -33,7 +33,7 @@ export const wave240Router = router({
       workflowType: WorkflowTypeEnum,
       entityId: z.string(),
       entityType: z.string(),
-      input: z.record(z.any()),
+      input: z.record(z.string(), z.any()),
     }))
     .mutation(async ({ input }) => {
       const workflowId = `${input.workflowType}-${input.entityId}-${Date.now()}`;
@@ -143,7 +143,7 @@ export const wave240Router = router({
     .input(z.object({
       workflowId: z.string(),
       signalName: z.string(),
-      payload: z.record(z.any()).optional(),
+      payload: z.record(z.string(), z.any()).optional(),
     }))
     .mutation(async ({ input }) => {
       const result = await safe("POST", "/v1/temporal/signal", {

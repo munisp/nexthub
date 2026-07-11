@@ -38,6 +38,10 @@ import { wave250Router } from "./routers/wave250_liquidity";
 import { wave260Router } from "./routers/wave260_domains";
 import { nibssNipRouter } from "./routers/nibssNip";
 import { nexthubTenantsRouter } from "./routers/nexthubTenants";
+import { nexthubLiquidityRouter } from "./routers/nexthubLiquidity";
+import { nexthubIdentityDirectoryRouter } from "./routers/nexthubIdentityDirectory";
+import { nexthubHsmRouter } from "./routers/nexthubHsm";
+import { nexthubArbitrationRouter } from "./routers/nexthubArbitration";
 
 // ─── App Router ───────────────────────────────────────────────────────────────
 export const appRouter = router({
@@ -83,6 +87,10 @@ export const appRouter = router({
   nibssNip: nibssNipRouter,
   // Multi-tenant & white-label management
   nexthubTenants: nexthubTenantsRouter,
+  nexthubLiquidity:         nexthubLiquidityRouter,
+  nexthubIdentityDirectory: nexthubIdentityDirectoryRouter,
+  nexthubHsm:               nexthubHsmRouter,
+  nexthubArbitration:       nexthubArbitrationRouter,
 });
 
 export type AppRouter = typeof appRouter;

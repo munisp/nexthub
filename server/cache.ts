@@ -37,6 +37,11 @@ export const TTL = {
   PARTICIPANTS: 60,
   /** FX rate list — 5 minutes */
   FX_RATE_LIST: 300,
+  "dispute:ml": 300,
+  identity: 60,
+  liquidity: 30,
+  "rtgs:submissions": 60,
+  SHORT: 30,
 } as const;
 
 // ─── Cache namespace keys ─────────────────────────────────────────────────────
@@ -50,7 +55,11 @@ export type CacheNamespace =
   | "nqr:status"
   | "nexthub:settlement_windows"
   | "nexthub:participants"
-  | "nexthub:fx_rates";
+  | "nexthub:fx_rates"
+  | "dispute:ml"
+  | "identity"
+  | "liquidity"
+  | "rtgs:submissions";
 
 // ─── Cache interface ──────────────────────────────────────────────────────────
 interface CacheStore {

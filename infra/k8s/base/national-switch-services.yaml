@@ -1,0 +1,750 @@
+---
+# ═══════════════════════════════════════════════════════════════════════════════
+# NextHub National Switch Services — Kubernetes Deployment Manifests
+# ═══════════════════════════════════════════════════════════════════════════════
+# Covers all four gap-roadmap phases:
+#   Phase 1: cb-liquidity-adapter   (Go)   — ISO 20022 / CBN RTGS bridge
+#   Phase 2: identity-directory     (Rust) — National alias resolution (DICT)
+#   Phase 2: biometric-verifier     (Py)   — BVN/NIN biometric verification
+#   Phase 3: hsm-adapter            (Go)   — PKCS#11 HSM management
+#   Phase 4: dispute-arbitration    (Go)   — Temporal workflow worker
+#   Phase 4: dispute-ml-scorer      (Py)   — ML fraud scoring service
+#   Temporal: temporal-frontend     —       Temporal server (workflow engine)
+# ═══════════════════════════════════════════════════════════════════════════════
+
+# ─── Phase 1: CB Liquidity Adapter (Go) ──────────────────────────────────────
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: cb-liquidity-adapter
+  namespace: nexthub
+  labels:
+    app: cb-liquidity-adapter
+    tier: integration
+    phase: "1"
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: cb-liquidity-adapter
+  template:
+    metadata:
+      labels:
+        app: cb-liquidity-adapter
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "9091"
+    spec:
+      serviceAccountName: nexthub-service
+      containers:
+        - name: cb-liquidity-adapter
+          image: nexthub/cb-liquidity-adapter:latest
+          ports:
+            - containerPort: 8210  # gRPC
+            - containerPort: 9091  # Prometheus metrics
+          env:
+            - name: KAFKA_BROKERS
+              valueFrom:
+                secretKeyRef:
+                  name: nexthub-kafka-secret
+                  key: brokers
+            - name: CBN_RTGS_ENDPOINT
+              valueFrom:
+                secretKeyRef:
+                  name: nexthub-cbn-secret
+                  key: rtgs_endpoint
+            - name: CBN_RTGS_TLS_CERT
+              valueFrom:
+                secretKeyRef:
+                  name: nexthub-cbn-secret
+                  key: tls_cert
+            - name: CBN_RTGS_TLS_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: nexthub-cbn-secret
+                  key: tls_key
+            - name: REDIS_URL
+              valueFrom:
+                secretKeyRef:
+                  name: nexthub-redis-secret
+                  key: url
+          resources:
+            requests:
+              cpu: "250m"
+              memory: "256Mi"
+            limits:
+              cpu: "1000m"
+              memory: "512Mi"
+          livenessProbe:
+            grpc:
+              port: 8210
+            initialDelaySeconds: 15
+            periodSeconds: 20
+          readinessProbe:
+            grpc:
+              port: 8210
+            initialDelaySeconds: 5
+            periodSeconds: 10
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: cb-liquidity-adapter
+  namespace: nexthub
+spec:
+  selector:
+    app: cb-liquidity-adapter
+  ports:
+    - name: grpc
+      port: 8210
+      targetPort: 8210
+    - name: metrics
+      port: 9091
+      targetPort: 9091
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: cb-liquidity-adapter-hpa
+  namespace: nexthub
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: cb-liquidity-adapter
+  minReplicas: 2
+  maxReplicas: 6
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 70
+
+---
+# ─── Phase 2: Identity Directory (Rust) ──────────────────────────────────────
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: identity-directory
+  namespace: nexthub
+  labels:
+    app: identity-directory
+    tier: core
+    phase: "2"
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: identity-directory
+  template:
+    metadata:
+      labels:
+        app: identity-directory
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "9092"
+    spec:
+      serviceAccountName: nexthub-service
+      containers:
+        - name: identity-directory
+          image: nexthub/identity-directory:latest
+          ports:
+            - containerPort: 8220  # HTTP/gRPC
+            - containerPort: 9092  # Prometheus
+          env:
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: nexthub-db-secret
+                  key: url
+            - name: REDIS_URL
+              valueFrom:
+                secretKeyRef:
+                  name: nexthub-redis-secret
+                  key: url
+            - name: KAFKA_BROKERS
+              valueFrom:
+                secretKeyRef:
+                  name: nexthub-kafka-secret
+                  key: brokers
+          resources:
+            requests:
+              cpu: "500m"
+              memory: "512Mi"
+            limits:
+              cpu: "2000m"
+              memory: "1Gi"
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8220
+            initialDelaySeconds: 10
+            periodSeconds: 15
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8220
+            initialDelaySeconds: 5
+            periodSeconds: 10
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: identity-directory
+  namespace: nexthub
+spec:
+  selector:
+    app: identity-directory
+  ports:
+    - name: http
+      port: 8220
+      targetPort: 8220
+    - name: metrics
+      port: 9092
+      targetPort: 9092
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: identity-directory-hpa
+  namespace: nexthub
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: identity-directory
+  minReplicas: 3
+  maxReplicas: 12
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 60
+    - type: Resource
+      resource:
+        name: memory
+        target:
+          type: Utilization
+          averageUtilization: 75
+
+---
+# ─── Phase 2: Biometric Verifier (Python) ────────────────────────────────────
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: biometric-verifier
+  namespace: nexthub
+  labels:
+    app: biometric-verifier
+    tier: integration
+    phase: "2"
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: biometric-verifier
+  template:
+    metadata:
+      labels:
+        app: biometric-verifier
+    spec:
+      serviceAccountName: nexthub-service
+      containers:
+        - name: biometric-verifier
+          image: nexthub/biometric-verifier:latest
+          ports:
+            - containerPort: 8225
+          env:
+            - name: NIBSS_BVN_API_URL
+              valueFrom:
+                secretKeyRef:
+                  name: nexthub-nibss-secret
+                  key: bvn_api_url
+            - name: NIBSS_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: nexthub-nibss-secret
+                  key: api_key
+            - name: REDIS_URL
+              valueFrom:
+                secretKeyRef:
+                  name: nexthub-redis-secret
+                  key: url
+            - name: KAFKA_BROKERS
+              valueFrom:
+                secretKeyRef:
+                  name: nexthub-kafka-secret
+                  key: brokers
+            - name: WORKERS
+              value: "4"
+          resources:
+            requests:
+              cpu: "250m"
+              memory: "512Mi"
+            limits:
+              cpu: "1000m"
+              memory: "1Gi"
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8225
+            initialDelaySeconds: 20
+            periodSeconds: 20
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: biometric-verifier
+  namespace: nexthub
+spec:
+  selector:
+    app: biometric-verifier
+  ports:
+    - name: http
+      port: 8225
+      targetPort: 8225
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: biometric-verifier-hpa
+  namespace: nexthub
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: biometric-verifier
+  minReplicas: 2
+  maxReplicas: 8
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 65
+
+---
+# ─── Phase 3: HSM Adapter (Go) ───────────────────────────────────────────────
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: hsm-adapter
+  namespace: nexthub
+  labels:
+    app: hsm-adapter
+    tier: security
+    phase: "3"
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: hsm-adapter
+  template:
+    metadata:
+      labels:
+        app: hsm-adapter
+    spec:
+      serviceAccountName: nexthub-service
+      # HSM pods must be scheduled on nodes with HSM hardware
+      nodeSelector:
+        nexthub.io/hsm-node: "true"
+      tolerations:
+        - key: "nexthub.io/hsm"
+          operator: "Exists"
+          effect: "NoSchedule"
+      volumes:
+        - name: hsm-device
+          hostPath:
+            path: /dev/hsm0
+            type: CharDevice
+        - name: pkcs11-lib
+          hostPath:
+            path: /usr/lib/softhsm/libsofthsm2.so
+            type: File
+      containers:
+        - name: hsm-adapter
+          image: nexthub/hsm-adapter:latest
+          ports:
+            - containerPort: 8221  # gRPC + REST
+          securityContext:
+            privileged: false
+            capabilities:
+              add: ["SYS_RAWIO"]
+          volumeMounts:
+            - name: hsm-device
+              mountPath: /dev/hsm0
+            - name: pkcs11-lib
+              mountPath: /usr/lib/softhsm/libsofthsm2.so
+              readOnly: true
+          env:
+            - name: PKCS11_LIB_PATH
+              value: /usr/lib/softhsm/libsofthsm2.so
+            - name: HSM_SLOT_PIN
+              valueFrom:
+                secretKeyRef:
+                  name: nexthub-hsm-secret
+                  key: slot_pin
+            - name: HSM_SLOT_ID
+              valueFrom:
+                secretKeyRef:
+                  name: nexthub-hsm-secret
+                  key: slot_id
+            - name: KAFKA_BROKERS
+              valueFrom:
+                secretKeyRef:
+                  name: nexthub-kafka-secret
+                  key: brokers
+          resources:
+            requests:
+              cpu: "500m"
+              memory: "256Mi"
+            limits:
+              cpu: "1000m"
+              memory: "512Mi"
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8221
+            initialDelaySeconds: 30
+            periodSeconds: 30
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8221
+            initialDelaySeconds: 10
+            periodSeconds: 15
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: hsm-adapter
+  namespace: nexthub
+spec:
+  selector:
+    app: hsm-adapter
+  ports:
+    - name: grpc-rest
+      port: 8221
+      targetPort: 8221
+
+---
+# ─── Phase 4: Dispute Arbitration Worker (Go/Temporal) ───────────────────────
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: dispute-arbitration-worker
+  namespace: nexthub
+  labels:
+    app: dispute-arbitration-worker
+    tier: workflow
+    phase: "4"
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: dispute-arbitration-worker
+  template:
+    metadata:
+      labels:
+        app: dispute-arbitration-worker
+    spec:
+      serviceAccountName: nexthub-service
+      containers:
+        - name: dispute-arbitration-worker
+          image: nexthub/dispute-arbitration:latest
+          env:
+            - name: TEMPORAL_HOST
+              value: "temporal-frontend:7233"
+            - name: TEMPORAL_NAMESPACE
+              value: "nexthub"
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: nexthub-db-secret
+                  key: url
+            - name: KAFKA_BROKERS
+              valueFrom:
+                secretKeyRef:
+                  name: nexthub-kafka-secret
+                  key: brokers
+            - name: REDIS_URL
+              valueFrom:
+                secretKeyRef:
+                  name: nexthub-redis-secret
+                  key: url
+            - name: ML_SCORER_URL
+              value: "http://dispute-ml-scorer:8230"
+          resources:
+            requests:
+              cpu: "250m"
+              memory: "256Mi"
+            limits:
+              cpu: "1000m"
+              memory: "512Mi"
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: dispute-arbitration-worker-hpa
+  namespace: nexthub
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: dispute-arbitration-worker
+  minReplicas: 3
+  maxReplicas: 10
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 70
+
+---
+# ─── Phase 4: Dispute ML Scorer (Python) ─────────────────────────────────────
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: dispute-ml-scorer
+  namespace: nexthub
+  labels:
+    app: dispute-ml-scorer
+    tier: ml
+    phase: "4"
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: dispute-ml-scorer
+  template:
+    metadata:
+      labels:
+        app: dispute-ml-scorer
+    spec:
+      serviceAccountName: nexthub-service
+      containers:
+        - name: dispute-ml-scorer
+          image: nexthub/dispute-ml-scorer:latest
+          ports:
+            - containerPort: 8230
+          env:
+            - name: REDIS_URL
+              valueFrom:
+                secretKeyRef:
+                  name: nexthub-redis-secret
+                  key: url
+            - name: KAFKA_BROKERS
+              valueFrom:
+                secretKeyRef:
+                  name: nexthub-kafka-secret
+                  key: brokers
+            - name: WORKERS
+              value: "4"
+          resources:
+            requests:
+              cpu: "500m"
+              memory: "1Gi"
+            limits:
+              cpu: "2000m"
+              memory: "2Gi"
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8230
+            initialDelaySeconds: 30
+            periodSeconds: 20
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8230
+            initialDelaySeconds: 15
+            periodSeconds: 10
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: dispute-ml-scorer
+  namespace: nexthub
+spec:
+  selector:
+    app: dispute-ml-scorer
+  ports:
+    - name: http
+      port: 8230
+      targetPort: 8230
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: dispute-ml-scorer-hpa
+  namespace: nexthub
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: dispute-ml-scorer
+  minReplicas: 2
+  maxReplicas: 8
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 65
+    - type: Resource
+      resource:
+        name: memory
+        target:
+          type: Utilization
+          averageUtilization: 75
+
+---
+# ─── Temporal Server (Workflow Engine) ───────────────────────────────────────
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: temporal-frontend
+  namespace: nexthub
+  labels:
+    app: temporal-frontend
+    tier: workflow-engine
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: temporal-frontend
+  template:
+    metadata:
+      labels:
+        app: temporal-frontend
+    spec:
+      containers:
+        - name: temporal-frontend
+          image: temporalio/auto-setup:1.24.2
+          ports:
+            - containerPort: 7233  # gRPC
+            - containerPort: 8233  # HTTP
+          env:
+            - name: DB
+              value: "postgresql"
+            - name: DB_PORT
+              value: "5432"
+            - name: POSTGRES_USER
+              valueFrom:
+                secretKeyRef:
+                  name: nexthub-db-secret
+                  key: user
+            - name: POSTGRES_PWD
+              valueFrom:
+                secretKeyRef:
+                  name: nexthub-db-secret
+                  key: password
+            - name: POSTGRES_SEEDS
+              valueFrom:
+                secretKeyRef:
+                  name: nexthub-db-secret
+                  key: host
+            - name: DYNAMIC_CONFIG_FILE_PATH
+              value: /etc/temporal/dynamic_config/dynamic_config.yaml
+            - name: TEMPORAL_BROADCAST_ADDRESS
+              valueFrom:
+                fieldRef:
+                  fieldPath: status.podIP
+          resources:
+            requests:
+              cpu: "500m"
+              memory: "512Mi"
+            limits:
+              cpu: "2000m"
+              memory: "2Gi"
+          livenessProbe:
+            grpc:
+              port: 7233
+            initialDelaySeconds: 30
+            periodSeconds: 20
+          readinessProbe:
+            grpc:
+              port: 7233
+            initialDelaySeconds: 15
+            periodSeconds: 10
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: temporal-frontend
+  namespace: nexthub
+spec:
+  selector:
+    app: temporal-frontend
+  ports:
+    - name: grpc
+      port: 7233
+      targetPort: 7233
+    - name: http
+      port: 8233
+      targetPort: 8233
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: temporal-frontend-hpa
+  namespace: nexthub
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: temporal-frontend
+  minReplicas: 2
+  maxReplicas: 6
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 70
+
+---
+# ─── Network Policies ─────────────────────────────────────────────────────────
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: national-switch-services-netpol
+  namespace: nexthub
+spec:
+  podSelector:
+    matchLabels: {}
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: nexthub
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: nexthub
+    # Allow external RTGS/NIBSS connections
+    - to:
+        - ipBlock:
+            cidr: 0.0.0.0/0
+            except:
+              - 10.0.0.0/8
+              - 172.16.0.0/12
+              - 192.168.0.0/16
+      ports:
+        - port: 443
+          protocol: TCP
+        - port: 8443
+          protocol: TCP

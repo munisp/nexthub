@@ -36,6 +36,11 @@ export const NEXTHUB_KAFKA_TOPICS = {
   SETTLEMENT_SETTLED:    "nexthub.settlement.settled.v1",
   PARTICIPANT_STATUS:    "nexthub.participant.status.v1",
   PARTICIPANT_ONBOARDED: "nexthub.participant.onboarded.v1",
+  DISPUTE_RAISED:        "nexthub.dispute.raised.v1",
+  DISPUTE_DECISION:      "nexthub.dispute.decision.v1",
+  RTGS_SUBMITTED:        "nexthub.rtgs.submitted.v1",
+  IDENTITY_LOOKUP:       "nexthub.identity.lookup.v1",
+  HSM_KEY_EVENT:         "nexthub.hsm.key.event.v1",
   DISPUTE_ESCALATED:     "nexthub.dispute.escalated.v1",
   AML_FLAG:              "nexthub.aml.flag.v1",
 

@@ -169,7 +169,30 @@ export const ENV = {
   // SDK Relay (via Go bridge)
   sdkRelayUrl: process.env.SDK_RELAY_URL ?? "http://go-bridge:8080",
 
-  // ─── NIBSS / NIP defaults ──────────────────────────────────────────────────
+  
+// ─── Phase 1: CB Liquidity Adapter ────────────────────────────────────────────
+cbRtgsEndpoint: process.env.CBN_RTGS_ENDPOINT ?? "",
+cbRtgsTlsCertPath: process.env.CBN_RTGS_TLS_CERT_PATH ?? "",
+cbRtgsTlsKeyPath: process.env.CBN_RTGS_TLS_KEY_PATH ?? "",
+cbRtgsInstitutionId: process.env.CBN_RTGS_INSTITUTION_ID ?? "NEXTHUB001",
+
+// ─── Phase 2: Identity Directory ──────────────────────────────────────────────
+identityDirectoryUrl: process.env.IDENTITY_DIRECTORY_URL ?? "http://identity-directory:8220",
+biometricVerifierUrl: process.env.BIOMETRIC_VERIFIER_URL ?? "http://biometric-verifier:8225",
+nibssBvnApiUrl: process.env.NIBSS_BVN_API_URL ?? "",
+nibssNinApiUrl: process.env.NIBSS_NIN_API_URL ?? "",
+
+// ─── Phase 3: HSM Adapter ─────────────────────────────────────────────────────
+hsmAdapterUrl: process.env.HSM_ADAPTER_GRPC_REST_URL ?? "http://hsm-adapter:8221",
+hsmSlotPin: process.env.HSM_SLOT_PIN ?? "",
+hsmSlotId: process.env.HSM_SLOT_ID ?? "0",
+pkcs11LibPath: process.env.PKCS11_LIB_PATH ?? "/usr/lib/softhsm/libsofthsm2.so",
+
+// ─── Phase 4: Dispute Arbitration ─────────────────────────────────────────────
+temporalApiUrl: process.env.TEMPORAL_API_URL ?? "http://temporal-frontend:7233",
+mlScorerUrl: process.env.ML_SCORER_URL ?? "http://dispute-ml-scorer:8230",
+
+// ─── NIBSS / NIP defaults ──────────────────────────────────────────────────
   nibssGatewayUrl: process.env.NIBSS_GATEWAY_URL ?? "https://nibss-plc.com.ng/nip/v1",
   nibssInstitutionCode: process.env.NIBSS_INSTITUTION_CODE ?? "000000",
   nibssSecretKey: process.env.NIBSS_SECRET_KEY ?? "",

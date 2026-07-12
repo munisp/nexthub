@@ -36,14 +36,17 @@ import * as nexthubSchema from "../drizzle/nexthub_schema";
 import * as nqrSchema from "../drizzle/nqr_schema";
 import * as tenantSchema from "../drizzle/tenant_schema";
 import * as nationalSwitchSchema from "../drizzle/national_switch_schema";
+import * as nexthubRelations from "../drizzle/nexthub_relations";
 
 // Merged schema for Drizzle relational queries (db.query.*)
+// Relations must be included alongside tables so db.query.* JOIN traversal works.
 export const allSchemas = {
   ...schema,
   ...nexthubSchema,
   ...nqrSchema,
   ...tenantSchema,
   ...nationalSwitchSchema,
+  ...nexthubRelations,
 };
 export { schema };
 

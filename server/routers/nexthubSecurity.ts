@@ -11,6 +11,7 @@ import { nexthubSecurityEvents, amlRules, nexthubDfsps } from "../../drizzle/nex
 import { eq, desc, sql, and, lt } from "drizzle-orm";
 import { TRPCError } from "@trpc/server";
 import { nexthubPublish } from "../kafka/nexthubKafkaProducer";
+import { nexthubFluvioPublish } from "../fluvio/nexthubFluvioProducer";
 
 export const nexthubSecurityRouter = router({
 
@@ -83,6 +84,17 @@ export const nexthubSecurityRouter = router({
         description: event.description,
         timestamp: new Date().toISOString(),
       }).catch(() => {});
+      // Real-time Fluvio stream for high/critical security alerts
+      if (event.severity === "HIGH" || event.severity === "CRITICAL") {
+        nexthubFluvioPublish.securityAlert({
+          alertId: event.id,
+          alertType: event.eventType,
+          severity: event.severity.toLowerCase() as "high" | "critical",
+          dfspId: event.dfspId ?? undefined,
+          description: event.description,
+          timestamp: new Date().toISOString(),
+        }).catch(() => {});
+      }
       return event;
     }),
 

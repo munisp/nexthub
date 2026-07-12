@@ -10,6 +10,8 @@ import {
 } from "../middlewareBridge";
 import { sql } from "drizzle-orm";
 import { nexthubPublish } from "../kafka/nexthubKafkaProducer";
+import { nexthubFluvioPublish } from "../fluvio/nexthubFluvioProducer";
+import { canActOnParticipant, hasRole } from "../permifyClient";
 
 const PositionLimitsSchema = z.object({
   participantId: z.string().min(1),
@@ -200,7 +202,9 @@ export const nexthubParticipantsRouter = router({
       participantId: z.string(),
       reason: z.string().min(5),
     }))
-    .mutation(async ({ input }) => {
+    .mutation(async ({ input, ctx }) => {
+      const allowed = await canActOnParticipant(String(ctx.user!.id), input.participantId, "suspend");
+      if (!allowed) throw new Error("PERMISSION_DENIED: cannot suspend this participant");
       await db.execute(sql.raw(`
         UPDATE nexthub_participants
         SET status = 'SUSPENDED', updated_at = NOW()
@@ -213,12 +217,21 @@ export const nexthubParticipantsRouter = router({
         reason: input.reason,
         timestamp: new Date().toISOString(),
       }).catch(() => {});
+      nexthubFluvioPublish.participantEvent({
+        participantId: input.participantId,
+        dfspId: input.participantId,
+        eventType: "SUSPENDED",
+        status: "SUSPENDED",
+        timestamp: new Date().toISOString(),
+      }).catch(() => {});
       return { participantId: input.participantId, status: "SUSPENDED", reason: input.reason };
     }),
 
   reactivateParticipant: hubOperatorProcedure
     .input(z.object({ participantId: z.string() }))
-    .mutation(async ({ input }) => {
+    .mutation(async ({ input, ctx }) => {
+      const allowed = await canActOnParticipant(String(ctx.user!.id), input.participantId, "reactivate");
+      if (!allowed) throw new Error("PERMISSION_DENIED: cannot reactivate this participant");
       await db.execute(sql.raw(`
         UPDATE nexthub_participants
         SET status = 'ACTIVE', updated_at = NOW()
@@ -232,6 +245,13 @@ export const nexthubParticipantsRouter = router({
         reason: "Reactivated by operator",
         timestamp: new Date().toISOString(),
       }).catch(() => {});
+      nexthubFluvioPublish.participantEvent({
+        participantId: input.participantId,
+        dfspId: input.participantId,
+        eventType: "REACTIVATED",
+        status: "ACTIVE",
+        timestamp: new Date().toISOString(),
+      }).catch(() => {});
       return { participantId: input.participantId, status: "ACTIVE" };
     }),
 
@@ -240,7 +260,9 @@ export const nexthubParticipantsRouter = router({
       participantId: z.string(),
       reason: z.string().min(5),
     }))
-    .mutation(async ({ input }) => {
+    .mutation(async ({ input, ctx }) => {
+      const allowed = await canActOnParticipant(String(ctx.user!.id), input.participantId, "offboard");
+      if (!allowed) throw new Error("PERMISSION_DENIED: cannot offboard this participant");
       await db.execute(sql.raw(`
         UPDATE nexthub_participants
         SET status = 'OFFBOARDED', updated_at = NOW()
@@ -251,6 +273,13 @@ export const nexthubParticipantsRouter = router({
         dfspId: input.participantId,
         status: "OFFBOARDED",
         reason: input.reason,
+        timestamp: new Date().toISOString(),
+      }).catch(() => {});
+      nexthubFluvioPublish.participantEvent({
+        participantId: input.participantId,
+        dfspId: input.participantId,
+        eventType: "OFFBOARDED",
+        status: "OFFBOARDED",
         timestamp: new Date().toISOString(),
       }).catch(() => {});
       return { participantId: input.participantId, status: "OFFBOARDED" };

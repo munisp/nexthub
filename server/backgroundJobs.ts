@@ -45,6 +45,10 @@ async function runBillingOverdueSweep(): Promise<void> {
 
     if (updated.length > 0) {
       console.log(`[billing-sweep] Marked ${updated.length} invoice(s) as OVERDUE:`, updated.map((i) => i.id));
+      // Publish Kafka event for each overdue invoice
+      for (const i of updated) {
+        nexthubPublish.invoiceIssued({ invoiceId: i.id, dfspId: i.dfspId ?? '', status: 'OVERDUE', totalAmountKobo: 0, currency: 'NGN', timestamp: new Date().toISOString() }).catch((e: any) => logger.error('[billing-sweep] kafka_publish_failed', { error: e?.message }));
+      }
     }
   } catch (err: any) {
     logger.error("[billing-sweep] Error", { error: err?.message });
@@ -72,6 +76,10 @@ async function runPispConsentExpiry(): Promise<void> {
 
     if (updated.length > 0) {
       console.log(`[pisp-expiry] Expired ${updated.length} PISP consent(s):`, updated.map((c) => c.consentId));
+      // Publish Kafka event for each expired consent
+      for (const c of updated) {
+        nexthubPublish.pispConsentRevoked({ consentId: c.consentId, pispId: c.pispId ?? '', dfspId: '', state: 'EXPIRED', timestamp: new Date().toISOString() }).catch((e: any) => logger.error('[pisp-expiry] kafka_publish_failed', { error: e?.message }));
+      }
     }
   } catch (err: any) {
     logger.error("[pisp-expiry] Error", { error: err?.message });
@@ -107,6 +115,10 @@ async function runDisputeSlaEscalation(): Promise<void> {
 
     if (escalated.length > 0) {
       console.log(`[dispute-sla] Escalated ${escalated.length} dispute(s) past SLA:`, escalated.map((d) => d.id));
+      // Publish Kafka event for each escalated dispute
+      for (const d of escalated) {
+        nexthubPublish.disputeReviewed({ disputeId: d.id, transferId: '', initiatedByDfspId: d.initiatedByDfspId ?? '', status: 'ESCALATED', amountKobo: 0, currency: 'NGN', timestamp: new Date().toISOString() }).catch((e: any) => logger.error('[dispute-sla] kafka_publish_failed', { error: e?.message }));
+      }
     }
   } catch (err: any) {
     logger.error("[dispute-sla] Error", { error: err?.message });

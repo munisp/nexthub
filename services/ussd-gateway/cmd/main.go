@@ -44,6 +44,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/redis/go-redis/v9"
 )
 
 // ─── Config ───────────────────────────────────────────────────────────────────
@@ -105,13 +106,46 @@ type Session struct {
 	LastUpdatedAt time.Time         `json:"lastUpdatedAt"`
 }
 
-// In-memory session store (replace with Redis in production)
-var sessionStore = make(map[string]*Session)
+// ─── Redis-backed session store ──────────────────────────────────────────────
+// Falls back to in-memory map when Redis is unavailable.
+
+var sessionStore = make(map[string]*Session) // fallback in-memory store
+var redisClient *redis.Client
+
+const sessionKeyPrefix = "ussd:session:"
+const sessionTTL = 3 * time.Minute
+
+func initRedis(redisURL string) {
+	opts, err := redis.ParseURL(redisURL)
+	if err != nil {
+		slog.Warn("ussd_redis_parse_error", "error", err.Error(), "fallback", "in-memory")
+		return
+	}
+	client := redis.NewClient(opts)
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	if err := client.Ping(ctx).Err(); err != nil {
+		slog.Warn("ussd_redis_unavailable", "error", err.Error(), "fallback", "in-memory")
+		return
+	}
+	redisClient = client
+	slog.Info("ussd_redis_connected", "url", redisURL)
+}
 
 func getSession(sessionID, phoneNumber, tenantID string) *Session {
-	if s, ok := sessionStore[sessionID]; ok {
+	ctx := context.Background()
+	if redisClient != nil {
+		val, err := redisClient.Get(ctx, sessionKeyPrefix+sessionID).Result()
+		if err == nil {
+			var s Session
+			if json.Unmarshal([]byte(val), &s) == nil {
+				return &s
+			}
+		}
+	} else if s, ok := sessionStore[sessionID]; ok {
 		return s
 	}
+	// New session
 	s := &Session{
 		ID:            sessionID,
 		PhoneNumber:   phoneNumber,
@@ -121,16 +155,31 @@ func getSession(sessionID, phoneNumber, tenantID string) *Session {
 		CreatedAt:     time.Now(),
 		LastUpdatedAt: time.Now(),
 	}
-	sessionStore[sessionID] = s
+	if redisClient == nil {
+		sessionStore[sessionID] = s
+	}
 	return s
 }
 
 func saveSession(s *Session) {
 	s.LastUpdatedAt = time.Now()
+	ctx := context.Background()
+	if redisClient != nil {
+		b, err := json.Marshal(s)
+		if err == nil {
+			redisClient.Set(ctx, sessionKeyPrefix+s.ID, b, sessionTTL)
+		}
+		return
+	}
 	sessionStore[s.ID] = s
 }
 
 func deleteSession(sessionID string) {
+	ctx := context.Background()
+	if redisClient != nil {
+		redisClient.Del(ctx, sessionKeyPrefix+sessionID)
+		return
+	}
 	delete(sessionStore, sessionID)
 }
 
@@ -457,6 +506,7 @@ func main() {
 	})))
 
 	cfg := loadConfig()
+	initRedis(cfg.RedisURL)
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("/health", handleHealth)

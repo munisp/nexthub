@@ -11,6 +11,8 @@ import { db } from "../db";
 import { postDisputeReversalToLedgerViaMiddleware } from "../middlewareBridge";
 import { transferDisputes, feePostings } from "../../drizzle/nexthub_schema";
 import { nexthubPublish } from "../kafka/nexthubKafkaProducer";
+import { nexthubFluvioPublish } from "../fluvio/nexthubFluvioProducer";
+import { canActOnDispute } from "../permifyClient";
 import { eq, desc, sql, and } from "drizzle-orm";
 import { TRPCError } from "@trpc/server";
 
@@ -112,6 +114,16 @@ export const nexthubDisputesRouter = router({
         currency: dispute.currency,
         timestamp: new Date().toISOString(),
       }).catch(() => {});
+      nexthubFluvioPublish.disputeUpdate({
+        disputeId: dispute.id,
+        transferId: dispute.transferId,
+        status: "OPEN",
+        disputeType: dispute.disputeType,
+        initiatedByDfspId: dispute.initiatedByDfspId,
+        amountKobo: dispute.amountKobo,
+        currency: dispute.currency,
+        timestamp: new Date().toISOString(),
+      }).catch(() => {});
       return dispute;
     }),
 
@@ -129,6 +141,16 @@ export const nexthubDisputesRouter = router({
         disputeId: updated.id,
         transferId: updated.transferId,
         status: "UNDER_REVIEW",
+        initiatedByDfspId: updated.initiatedByDfspId,
+        amountKobo: updated.amountKobo,
+        currency: updated.currency,
+        timestamp: new Date().toISOString(),
+      }).catch(() => {});
+      nexthubFluvioPublish.disputeUpdate({
+        disputeId: updated.id,
+        transferId: updated.transferId,
+        status: "UNDER_REVIEW",
+        disputeType: updated.disputeType,
         initiatedByDfspId: updated.initiatedByDfspId,
         amountKobo: updated.amountKobo,
         currency: updated.currency,
@@ -253,7 +275,9 @@ export const nexthubDisputesRouter = router({
       disputeId: z.string(),
       notes: z.string().optional(),
     }))
-    .mutation(async ({ input }) => {
+    .mutation(async ({ input, ctx }) => {
+      const allowed = await canActOnDispute(String(ctx.user.id), input.disputeId, "escalate");
+      if (!allowed) throw new TRPCError({ code: "FORBIDDEN", message: "PERMISSION_DENIED: cannot escalate this dispute" });
       const [updated] = await db.update(transferDisputes)
         .set({
           status: "ESCALATED",

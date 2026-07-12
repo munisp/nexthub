@@ -20,6 +20,7 @@ import { ENV } from "../_core/env";
 import { getDb } from "../db";
 import { auditLogs } from "../../drizzle/nexthub_schema";
 import { NEXTHUB_KAFKA_TOPICS } from "./nexthubKafkaProducer";
+import { nexthubFluvioPublish } from "../fluvio/nexthubFluvioProducer";
 import { logger } from "../logger";
 
 const MAX_RETRIES = 3;
@@ -228,6 +229,99 @@ export function getCorridorVolumeCache() {
   return corridorVolumeCache;
 }
 
+// ─── NDC Breach Consumer → fans out to Fluvio for real-time dashboard ─────────
+async function startNdcBreachConsumer(dlqProducer: any) {
+  const kafka = await getKafka();
+  if (!kafka) return;
+  const consumer = kafka.consumer({ groupId: "nexthub-ndc-breach-consumer" });
+  await consumer.connect();
+  await consumer.subscribe({ topic: NEXTHUB_KAFKA_TOPICS.NDC_BREACH, fromBeginning: false });
+  logger.info("[nexthub-kafka-consumer] NDC breach consumer started");
+  await consumer.run({
+    eachMessage: async ({ message, partition, topic }: any) => {
+      const rawValue = message.value?.toString() ?? "";
+      const res = await withRetry(async () => {
+        const payload = JSON.parse(rawValue);
+        nexthubFluvioPublish.ndcBreachAlert({
+          dfspId: payload.dfspId ?? "",
+          dfspName: payload.dfspName ?? payload.dfspId ?? "",
+          severity: payload.severity ?? "high",
+          limitType: payload.limitType ?? "NET_DEBIT_CAP",
+          threshold: payload.threshold ?? 0,
+          breachAmount: payload.breachAmount ?? 0,
+          utilisationPct: payload.utilisationPct ?? 0,
+          currency: payload.currency ?? "NGN",
+          timestamp: payload.timestamp ?? new Date().toISOString(),
+        }).catch(() => {});
+      }, MAX_RETRIES, "nexthub-ndc-breach-consumer");
+      if (!res.ok) {
+        await publishToDlq(dlqProducer, topic, partition, message.offset, res.error.message, rawValue);
+      }
+    },
+  });
+  return consumer;
+}
+
+// ─── Settlement Settled Consumer → fans out to Fluvio ─────────────────────────
+async function startSettlementConsumer(dlqProducer: any) {
+  const kafka = await getKafka();
+  if (!kafka) return;
+  const consumer = kafka.consumer({ groupId: "nexthub-settlement-consumer" });
+  await consumer.connect();
+  await consumer.subscribe({ topic: NEXTHUB_KAFKA_TOPICS.SETTLEMENT_SETTLED, fromBeginning: false });
+  logger.info("[nexthub-kafka-consumer] Settlement consumer started");
+  await consumer.run({
+    eachMessage: async ({ message, partition, topic }: any) => {
+      const rawValue = message.value?.toString() ?? "";
+      const res = await withRetry(async () => {
+        const payload = JSON.parse(rawValue);
+        nexthubFluvioPublish.settlementUpdate({
+          windowId: payload.windowId ?? "",
+          status: "SETTLED",
+          currency: payload.currency ?? "NGN",
+          totalTransfers: payload.totalTransfers ?? 0,
+          totalAmountKobo: payload.totalAmountKobo ?? 0,
+          timestamp: payload.timestamp ?? new Date().toISOString(),
+        }).catch(() => {});
+      }, MAX_RETRIES, "nexthub-settlement-consumer");
+      if (!res.ok) {
+        await publishToDlq(dlqProducer, topic, partition, message.offset, res.error.message, rawValue);
+      }
+    },
+  });
+  return consumer;
+}
+
+// ─── FX Rate Consumer → fans out to Fluvio for live rate ticks ────────────────
+async function startFxRateConsumer(dlqProducer: any) {
+  const kafka = await getKafka();
+  if (!kafka) return;
+  const consumer = kafka.consumer({ groupId: "nexthub-fx-rate-consumer" });
+  await consumer.connect();
+  await consumer.subscribe({ topic: NEXTHUB_KAFKA_TOPICS.FX_RATES, fromBeginning: false });
+  logger.info("[nexthub-kafka-consumer] FX rate consumer started");
+  await consumer.run({
+    eachMessage: async ({ message, partition, topic }: any) => {
+      const rawValue = message.value?.toString() ?? "";
+      const res = await withRetry(async () => {
+        const payload = JSON.parse(rawValue);
+        nexthubFluvioPublish.fxRateTick({
+          sourceCurrency: payload.sourceCurrency ?? "",
+          targetCurrency: payload.targetCurrency ?? "",
+          midRate: payload.midRate ?? 1,
+          change1h: payload.change1h ?? 0,
+          change24h: payload.change24h ?? 0,
+          timestamp: payload.timestamp ?? new Date().toISOString(),
+        }).catch(() => {});
+      }, MAX_RETRIES, "nexthub-fx-rate-consumer");
+      if (!res.ok) {
+        await publishToDlq(dlqProducer, topic, partition, message.offset, res.error.message, rawValue);
+      }
+    },
+  });
+  return consumer;
+}
+
 // ─── Start all consumers ──────────────────────────────────────────────────────
 let _started = false;
 
@@ -247,6 +341,9 @@ export async function startAllConsumers() {
       startAuditConsumer(dlqProducer),
       startCorridorVolumeConsumer(dlqProducer),
       startDlqMonitorConsumer(),
+      startNdcBreachConsumer(dlqProducer),
+      startSettlementConsumer(dlqProducer),
+      startFxRateConsumer(dlqProducer),
     ]);
     logger.info("[nexthub-kafka-consumer] All consumers running");
   } catch (err: any) {

@@ -35,6 +35,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/confluentinc/confluent-kafka-go/v2/kafka"
 	"github.com/google/uuid"
 )
 
@@ -182,15 +183,63 @@ type TenantEvent struct {
 	Metadata   interface{} `json:"metadata,omitempty"`
 }
 
-// publishTenantEvent writes a tenant lifecycle event to stdout (structured log).
-// In production, this is replaced by the Kafka producer from confluent-kafka-go.
-// The Kafka producer is injected via dependency injection in the full build.
+// ─── Kafka producer (real confluent-kafka-go) ──────────────────────────────────────
+
+const tenantKafkaTopic = "nexthub.tenants.v1"
+
+var kafkaProducer *kafka.Producer
+
+func initKafkaProducer(brokers string) {
+	p, err := kafka.NewProducer(&kafka.ConfigMap{
+		"bootstrap.servers": brokers,
+		"acks":              "all",
+		"retries":           3,
+	})
+	if err != nil {
+		slog.Warn("kafka_producer_init_failed", "error", err.Error(), "fallback", "structured-log")
+		return
+	}
+	kafkaProducer = p
+	// Drain delivery reports in background
+	go func() {
+		for e := range p.Events() {
+			switch ev := e.(type) {
+			case *kafka.Message:
+				if ev.TopicPartition.Error != nil {
+					slog.Error("kafka_delivery_failed", "error", ev.TopicPartition.Error.Error())
+				}
+			}
+		}
+	}()
+	slog.Info("kafka_producer_ready", "brokers", brokers)
+}
+
+// publishTenantEvent emits a tenant lifecycle event to Kafka (nexthub.tenants.v1).
+// Falls back to structured log when Kafka is unavailable.
 func publishTenantEvent(event TenantEvent) {
-	b, _ := json.Marshal(event)
+	b, err := json.Marshal(event)
+	if err != nil {
+		slog.Error("kafka_marshal_failed", "error", err.Error())
+		return
+	}
+	// Always log for observability
 	slog.Info("kafka_event",
-		"topic", fmt.Sprintf("nexthub.%s.tenant.v1", event.TenantID),
-		"payload", string(b),
+		"topic", tenantKafkaTopic,
+		"eventType", event.EventType,
+		"tenantId", event.TenantID,
 	)
+	if kafkaProducer == nil {
+		return // fallback: log only
+	}
+	topic := tenantKafkaTopic
+	err = kafkaProducer.Produce(&kafka.Message{
+		TopicPartition: kafka.TopicPartition{Topic: &topic, Partition: kafka.PartitionAny},
+		Key:            []byte(event.TenantID),
+		Value:          b,
+	}, nil)
+	if err != nil {
+		slog.Error("kafka_produce_failed", "error", err.Error(), "topic", topic)
+	}
 }
 
 // ─── Provisioning logic ───────────────────────────────────────────────────────
@@ -395,6 +444,7 @@ func main() {
 	})))
 
 	cfg := loadConfig()
+	initKafkaProducer(cfg.KafkaBrokers)
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("/health", handleHealth)

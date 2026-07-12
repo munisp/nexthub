@@ -39,6 +39,7 @@ import { nexthubPublish } from "./kafka/nexthubKafkaProducer";
 import { handleNqrWebhook, registerNqrSseClient } from "./nibss/nqrService";
 import { logger } from "./logger";
 import { postNipTransferToLedgerViaMiddleware } from "./middlewareBridge";
+import { cache, CacheNamespace, TTL } from "./cache";
 // ─── Rate limiters ────────────────────────────────────────────────────────────
 
 const globalLimiter = rateLimit({
@@ -67,17 +68,36 @@ function correlationMiddleware(req: Request, res: Response, next: NextFunction) 
   next();
 }
 
-// ─── In-memory idempotency store (replace with Redis in production) ───────────
-// Maps idempotencyKey → { status, body, transferId, expiresAt }
+// ─── Redis-backed idempotency store ─────────────────────────────────────────
+// Falls back to in-memory map when Redis is unavailable.
 
 interface IdempotencyRecord {
   status: number;
   body: object;
   expiresAt: number;
 }
-const idempotencyStore = new Map<string, IdempotencyRecord>();
+const idempotencyStore = new Map<string, IdempotencyRecord>(); // in-memory fallback
 
-// Sweep expired entries every 10 minutes
+async function getIdempotencyRecord(key: string): Promise<IdempotencyRecord | null> {
+  // Try Redis first
+  try {
+    const cached = await cache.get("idempotency", key) as IdempotencyRecord | null;
+    if (cached) return cached;
+  } catch { /* fall through to in-memory */ }
+  // Fallback to in-memory
+  const mem = idempotencyStore.get(key);
+  if (mem && mem.expiresAt > Date.now()) return mem;
+  return null;
+}
+
+async function setIdempotencyRecord(key: string, record: IdempotencyRecord): Promise<void> {
+  // Write to Redis (24 h TTL)
+  await cache.set("idempotency", key, record, TTL.IDEMPOTENCY).catch(() => {});
+  // Also write to in-memory fallback
+  idempotencyStore.set(key, record);
+}
+
+// Sweep in-memory fallback every 10 minutes
 setInterval(() => {
   const now = Date.now();
   for (const [k, v] of idempotencyStore) {
@@ -241,7 +261,7 @@ export function createIntegrationRouter(): Router {
       });
     }
 
-    const existing = idempotencyStore.get(idempotencyKey);
+    const existing = await getIdempotencyRecord(idempotencyKey);
     if (existing) {
       // Return cached response for duplicate request
       return res.status(existing.status).json({
@@ -289,7 +309,7 @@ export function createIntegrationRouter(): Router {
           matchedRules: amlResult.matchedRules,
           correlationId,
         };
-        idempotencyStore.set(idempotencyKey, { status: 422, body, expiresAt: Date.now() + 24 * 3600 * 1000 });
+        await setIdempotencyRecord(idempotencyKey, { status: 422, body, expiresAt: Date.now() + 24 * 3600 * 1000 });
         return res.status(422).json(body);
       }
 
@@ -362,8 +382,8 @@ export function createIntegrationRouter(): Router {
         correlationId,
       };
 
-      // Cache the response for idempotency (24 h TTL)
-      idempotencyStore.set(idempotencyKey, {
+      // Cache the response for idempotency (24 h TTL) — Redis-backed
+      await setIdempotencyRecord(idempotencyKey, {
         status: 201,
         body: responseBody,
         expiresAt: Date.now() + 24 * 3600 * 1000,

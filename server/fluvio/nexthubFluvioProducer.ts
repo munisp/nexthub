@@ -23,6 +23,11 @@ export const NEXTHUB_FLUVIO_TOPICS = {
   FX_RATE_TICKS:          "fx-rate-ticks",
   SETTLEMENT_UPDATES:     "settlement-updates",
   TRANSFER_STATE_CHANGES: "transfer-state-changes",
+  DISPUTE_UPDATES:        "dispute-updates",
+  PISP_EVENTS:            "pisp-events",
+  PARTICIPANT_EVENTS:     "participant-events",
+  CBDC_EVENTS:            "cbdc-events",
+  SECURITY_ALERTS:        "security-alerts",
 } as const;
 
 // ─── Typed payloads ───────────────────────────────────────────────────────────
@@ -126,6 +131,50 @@ export async function publishFluvioEvent<T extends object>(
 }
 
 // ─── Typed publish helpers ────────────────────────────────────────────────────
+export interface FluvioDisputeUpdate {
+  disputeId: string;
+  transferId: string;
+  status: string;
+  disputeType: string;
+  initiatedByDfspId: string;
+  amountKobo: number;
+  currency: string;
+  timestamp: string;
+}
+
+export interface FluvioPispEvent {
+  consentId: string;
+  pispId: string;
+  eventType: "GRANTED" | "REVOKED" | "EXPIRED" | "TRANSFER_INITIATED";
+  dfspId: string;
+  timestamp: string;
+}
+
+export interface FluvioParticipantEvent {
+  participantId: string;
+  dfspId: string;
+  eventType: "ONBOARDED" | "SUSPENDED" | "REACTIVATED" | "OFFBOARDED" | "LIMIT_UPDATED";
+  status: string;
+  timestamp: string;
+}
+
+export interface FluvioCbdcEvent {
+  accountId: string;
+  eventType: "ACCOUNT_CREATED" | "TRANSFER_INITIATED" | "TRANSFER_COMPLETED";
+  amount?: number;
+  currency: string;
+  timestamp: string;
+}
+
+export interface FluvioSecurityAlert {
+  alertId: string;
+  alertType: string;
+  severity: "low" | "medium" | "high" | "critical";
+  dfspId?: string;
+  description: string;
+  timestamp: string;
+}
+
 export const nexthubFluvioPublish = {
   ndcBreachAlert: (e: FluvioNdcBreachAlert) =>
     publishFluvioEvent(NEXTHUB_FLUVIO_TOPICS.NDC_BREACH_ALERTS, e, e.dfspId),
@@ -138,4 +187,19 @@ export const nexthubFluvioPublish = {
 
   transferStateChange: (e: FluvioTransferStateChange) =>
     publishFluvioEvent(NEXTHUB_FLUVIO_TOPICS.TRANSFER_STATE_CHANGES, e, e.transferId),
+
+  disputeUpdate: (e: FluvioDisputeUpdate) =>
+    publishFluvioEvent(NEXTHUB_FLUVIO_TOPICS.DISPUTE_UPDATES, e, e.disputeId),
+
+  pispEvent: (e: FluvioPispEvent) =>
+    publishFluvioEvent(NEXTHUB_FLUVIO_TOPICS.PISP_EVENTS, e, e.consentId),
+
+  participantEvent: (e: FluvioParticipantEvent) =>
+    publishFluvioEvent(NEXTHUB_FLUVIO_TOPICS.PARTICIPANT_EVENTS, e, e.participantId),
+
+  cbdcEvent: (e: FluvioCbdcEvent) =>
+    publishFluvioEvent(NEXTHUB_FLUVIO_TOPICS.CBDC_EVENTS, e, e.accountId),
+
+  securityAlert: (e: FluvioSecurityAlert) =>
+    publishFluvioEvent(NEXTHUB_FLUVIO_TOPICS.SECURITY_ALERTS, e, e.alertId),
 };

@@ -28,6 +28,8 @@ import {
   nexthubDfsps,
 } from "../drizzle/nexthub_schema";
 import { publishKafkaEvent, NEXTHUB_KAFKA_TOPICS } from "./kafka/nexthubKafkaProducer";
+import { nexthubFluvioPublish } from "./fluvio/nexthubFluvioProducer";
+import { writeLakehouseComplianceEventViaMiddleware } from "./middlewareBridge";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PROTO_PATH = path.resolve(__dirname, "../proto/nexthub.proto");
@@ -114,6 +116,10 @@ const transferServiceImpl = {
         state: transfer.state,
         timestamp: transfer.createdAt.toISOString(),
       });
+      // Real-time Fluvio stream for live dashboard
+      nexthubFluvioPublish.transferStateChange({ transferId: transfer.id, payerFspId: transfer.payerFspId, payeeFspId: transfer.payeeFspId, previousState: 'PENDING', newState: transfer.state, amountKobo: transfer.amountKobo, currency: transfer.currency, timestamp: new Date().toISOString() }).catch(() => {});
+      // Compliance lakehouse write
+      writeLakehouseComplianceEventViaMiddleware({ eventType: 'TRANSFER_RECEIVED', merchantId: transfer.id, userId: transfer.payerFspId, resource: 'transfer', action: 'transfer_received', outcome: 'success', metadata: { payeeFspId: transfer.payeeFspId, amountKobo: transfer.amountKobo, currency: transfer.currency } }).catch(() => {});
 
       callback(null, {
         transferId: transfer.id,
@@ -189,6 +195,8 @@ const transferServiceImpl = {
         errorDescription: updated.errorDescription,
         timestamp: new Date().toISOString(),
       });
+      nexthubFluvioPublish.transferStateChange({ transferId: updated.id, payerFspId: updated.payerFspId, payeeFspId: updated.payeeFspId, previousState: 'RESERVED', newState: 'ABORTED', amountKobo: updated.amountKobo, currency: updated.currency, timestamp: new Date().toISOString() }).catch(() => {});
+      writeLakehouseComplianceEventViaMiddleware({ eventType: 'TRANSFER_ABORTED', merchantId: updated.id, userId: updated.payerFspId, resource: 'transfer', action: 'transfer_aborted', outcome: 'success', metadata: { errorCode: updated.errorCode, errorDescription: updated.errorDescription } }).catch(() => {});
 
       callback(null, { success: true, state: "ABORTED", message: "Transfer aborted" });
     } catch (err: any) {
@@ -225,6 +233,8 @@ const transferServiceImpl = {
         schemeFeeKobo: updated.schemeFeeKobo,
         timestamp: new Date().toISOString(),
       });
+      nexthubFluvioPublish.transferStateChange({ transferId: updated.id, payerFspId: updated.payerFspId, payeeFspId: updated.payeeFspId, previousState: 'RESERVED', newState: 'COMMITTED', amountKobo: updated.amountKobo, currency: updated.currency, timestamp: new Date().toISOString() }).catch(() => {});
+      writeLakehouseComplianceEventViaMiddleware({ eventType: 'TRANSFER_COMMITTED', merchantId: updated.id, userId: updated.payerFspId, resource: 'transfer', action: 'transfer_committed', outcome: 'success', metadata: { payeeFspId: updated.payeeFspId, amountKobo: updated.amountKobo, currency: updated.currency } }).catch(() => {});
 
       callback(null, {
         success: true,

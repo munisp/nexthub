@@ -204,6 +204,21 @@ func main() {
 		infra.POST("/mosip/esignet/token",          h.ExchangeESignetCode)
 		infra.POST("/mosip/vc/issue",               h.IssueVerifiableCredential)
 		infra.POST("/mosip/g2p/verify-beneficiary", h.VerifyG2PBeneficiary)
+
+		// MOSIP Citizen Registration Pipeline
+		infra.POST("/mosip/registration/pre-reg",               h.HandlePreRegCreate)
+		infra.GET("/mosip/registration/pre-reg/:aid",           h.HandlePreRegGet)
+		infra.POST("/mosip/registration/appointment",           h.HandleBookAppointment)
+		infra.DELETE("/mosip/registration/appointment/:aid",    h.HandleCancelAppointment)
+		infra.POST("/mosip/registration/packet",                h.HandlePacketUpload)
+		infra.GET("/mosip/registration/packet/:rid/status",     h.HandlePacketStatus)
+		infra.GET("/mosip/registration/uin/:uin",               h.HandleUINStatus)
+		infra.PUT("/mosip/registration/uin",                    h.HandleUINUpdate)
+		infra.POST("/mosip/registration/uin/lock",              h.HandleUINLock)
+		infra.POST("/mosip/registration/uin/unlock",            h.HandleUINUnlock)
+		infra.POST("/mosip/registration/vid",                   h.HandleVIDGenerate)
+		infra.POST("/mosip/registration/credential",            h.HandleCredentialRequest)
+		infra.GET("/mosip/registration/credential/:requestId",  h.HandleCredentialStatus)
 		// Kafka direct
 		infra.POST("/kafka/publish",                h.KafkaPublish)
 		// Temporal proxy

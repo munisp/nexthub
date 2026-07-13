@@ -368,6 +368,11 @@ mlScorerUrl: process.env.ML_SCORER_URL ?? "http://dispute-ml-scorer:8230",
   esignetClientSecret: process.env.ESIGNET_CLIENT_SECRET ?? '',
   esignetRedirectUri: process.env.ESIGNET_REDIRECT_URI ?? '',
   mosipVcIssuerUrl: process.env.MOSIP_VC_ISSUER_URL ?? 'https://api.sandbox.mosip.net/v1/vciplugin',
+  // ─── MOSIP Citizen Registration Pipeline ─────────────────────────────────────
+  mosipPreRegBaseUrl: process.env.MOSIP_PREREG_BASE_URL ?? 'https://api.sandbox.mosip.net',
+  mosipRegProcBaseUrl: process.env.MOSIP_REGPROC_BASE_URL ?? 'https://api.sandbox.mosip.net',
+  mosipIdRepoBaseUrl: process.env.MOSIP_IDREPO_BASE_URL ?? 'https://api.sandbox.mosip.net',
+  mosipCredentialBaseUrl: process.env.MOSIP_CREDENTIAL_BASE_URL ?? 'https://api.sandbox.mosip.net',
 };
 
 // Lowercase alias for convenience — use `env` in new code

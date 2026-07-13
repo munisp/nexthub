@@ -38,6 +38,14 @@ type Config struct {
 	IDABaseURL string
 	// eSignet base URL (e.g. https://esignet.mosip.net)
 	ESignetBaseURL string
+	// Pre-registration service base URL
+	PreRegBaseURL string
+	// Registration Processor base URL
+	RegProcBaseURL string
+	// ID Repository base URL
+	IDRepoBaseURL string
+	// Credential Service base URL
+	CredentialBaseURL string
 	// Partner ID registered with MOSIP
 	PartnerID string
 	// Partner API key
@@ -59,8 +67,12 @@ func ConfigFromEnv() Config {
 		timeout = 30 * time.Second
 	}
 	return Config{
-		IDABaseURL:     getEnvOrDefault("MOSIP_IDA_BASE_URL", "https://ida.mosip.net"),
-		ESignetBaseURL: getEnvOrDefault("MOSIP_ESIGNET_BASE_URL", "https://esignet.mosip.net"),
+		IDABaseURL:        getEnvOrDefault("MOSIP_IDA_BASE_URL", "https://ida.mosip.net"),
+		ESignetBaseURL:    getEnvOrDefault("MOSIP_ESIGNET_BASE_URL", "https://esignet.mosip.net"),
+		PreRegBaseURL:     getEnvOrDefault("MOSIP_PREREG_BASE_URL", "https://prereg.mosip.net"),
+		RegProcBaseURL:    getEnvOrDefault("MOSIP_REGPROC_BASE_URL", "https://regproc.mosip.net"),
+		IDRepoBaseURL:     getEnvOrDefault("MOSIP_IDREPO_BASE_URL", "https://idrepo.mosip.net"),
+		CredentialBaseURL: getEnvOrDefault("MOSIP_CREDENTIAL_BASE_URL", "https://credential.mosip.net"),
 		PartnerID:      os.Getenv("MOSIP_PARTNER_ID"),
 		PartnerAPIKey:  os.Getenv("MOSIP_PARTNER_API_KEY"),
 		MISPLicenseKey: os.Getenv("MOSIP_MISP_LICENSE_KEY"),

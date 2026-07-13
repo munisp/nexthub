@@ -408,3 +408,482 @@ func (h *Handler) VerifyG2PBeneficiary(c *gin.Context) {
 		"transactionId": ekycResp.TransactionID,
 	})
 }
+
+// ─── Registration: Pre-registration ──────────────────────────────────────────
+
+// PreRegCreateRequest is the request body for creating a pre-registration application.
+type PreRegCreateRequest struct {
+DemographicDetails mosip.DemographicDetails `json:"demographicDetails" binding:"required"`
+LangCode           string                   `json:"langCode" binding:"required"`
+CreatedBy          string                   `json:"createdBy" binding:"required"`
+AuthToken          string                   `json:"authToken" binding:"required"`
+}
+
+// HandlePreRegCreate creates a MOSIP pre-registration application for a citizen.
+func (h *Handler) HandlePreRegCreate(c *gin.Context) {
+if h.MOSIP == nil {
+c.JSON(http.StatusServiceUnavailable, gin.H{"error": "MOSIP client not initialised"})
+return
+}
+var req PreRegCreateRequest
+if err := c.ShouldBindJSON(&req); err != nil {
+c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+return
+}
+app := mosip.PreRegApplication{
+DemographicDetails: req.DemographicDetails,
+LangCode:           req.LangCode,
+CreatedBy:          req.CreatedBy,
+}
+data, err := h.MOSIP.CreatePreRegistration(c.Request.Context(), app, req.AuthToken)
+if err != nil {
+h.Log.Error("mosip.prereg.create.error", zap.Error(err))
+c.JSON(http.StatusBadGateway, gin.H{"error": err.Error()})
+return
+}
+_ = h.Kafka.Publish(c.Request.Context(), kafka.TopicMOSIPRegistration,
+data.PreRegistrationID, map[string]interface{}{
+"event":             "PRE_REG_CREATED",
+"preRegistrationId": data.PreRegistrationID,
+"createdBy":         data.CreatedBy,
+"statusCode":        data.StatusCode,
+"timestamp":         time.Now().UTC().Format(time.RFC3339),
+})
+c.JSON(http.StatusOK, gin.H{
+"preRegistrationId": data.PreRegistrationID,
+"statusCode":        data.StatusCode,
+"createdDateTime":   data.CreatedDateTime,
+})
+}
+
+// HandlePreRegGet fetches a pre-registration application by AID.
+func (h *Handler) HandlePreRegGet(c *gin.Context) {
+if h.MOSIP == nil {
+c.JSON(http.StatusServiceUnavailable, gin.H{"error": "MOSIP client not initialised"})
+return
+}
+aid := c.Param("aid")
+authToken := c.GetHeader("Authorization")
+if authToken == "" {
+c.JSON(http.StatusUnauthorized, gin.H{"error": "missing Authorization header"})
+return
+}
+if len(authToken) > 7 && authToken[:7] == "Bearer " {
+authToken = authToken[7:]
+}
+data, err := h.MOSIP.GetPreRegistration(c.Request.Context(), aid, authToken)
+if err != nil {
+h.Log.Error("mosip.prereg.get.error", zap.String("aid", aid), zap.Error(err))
+c.JSON(http.StatusBadGateway, gin.H{"error": err.Error()})
+return
+}
+c.JSON(http.StatusOK, data)
+}
+
+// ─── Registration: Appointment ────────────────────────────────────────────────
+
+// AppointmentBookRequest is the request body for booking a registration appointment.
+type AppointmentBookRequest struct {
+PreRegistrationID    string `json:"preRegistrationId" binding:"required"`
+RegistrationCenterID string `json:"registrationCenterId" binding:"required"`
+SlotFromTime         string `json:"slotFromTime" binding:"required"`
+SlotToTime           string `json:"slotToTime" binding:"required"`
+AppointmentDate      string `json:"appointmentDate" binding:"required"`
+AuthToken            string `json:"authToken" binding:"required"`
+}
+
+// HandleBookAppointment books a registration center appointment.
+func (h *Handler) HandleBookAppointment(c *gin.Context) {
+if h.MOSIP == nil {
+c.JSON(http.StatusServiceUnavailable, gin.H{"error": "MOSIP client not initialised"})
+return
+}
+var req AppointmentBookRequest
+if err := c.ShouldBindJSON(&req); err != nil {
+c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+return
+}
+apptReq := mosip.AppointmentRequest{
+PreRegistrationID:    req.PreRegistrationID,
+RegistrationCenterID: req.RegistrationCenterID,
+SlotFromTime:         req.SlotFromTime,
+SlotToTime:           req.SlotToTime,
+AppointmentDate:      req.AppointmentDate,
+}
+if err := h.MOSIP.BookAppointment(c.Request.Context(), apptReq, req.AuthToken); err != nil {
+h.Log.Error("mosip.appointment.book.error", zap.Error(err))
+c.JSON(http.StatusBadGateway, gin.H{"error": err.Error()})
+return
+}
+_ = h.Kafka.Publish(c.Request.Context(), kafka.TopicMOSIPRegistration,
+req.PreRegistrationID, map[string]interface{}{
+"event":             "APPOINTMENT_BOOKED",
+"preRegistrationId": req.PreRegistrationID,
+"centerId":          req.RegistrationCenterID,
+"appointmentDate":   req.AppointmentDate,
+"timestamp":         time.Now().UTC().Format(time.RFC3339),
+})
+c.JSON(http.StatusOK, gin.H{
+"preRegistrationId": req.PreRegistrationID,
+"status":            "BOOKED",
+"appointmentDate":   req.AppointmentDate,
+"centerId":          req.RegistrationCenterID,
+})
+}
+
+// HandleCancelAppointment cancels a booked appointment.
+func (h *Handler) HandleCancelAppointment(c *gin.Context) {
+if h.MOSIP == nil {
+c.JSON(http.StatusServiceUnavailable, gin.H{"error": "MOSIP client not initialised"})
+return
+}
+aid := c.Param("aid")
+authToken := c.GetHeader("Authorization")
+if authToken == "" {
+c.JSON(http.StatusUnauthorized, gin.H{"error": "missing Authorization header"})
+return
+}
+if len(authToken) > 7 && authToken[:7] == "Bearer " {
+authToken = authToken[7:]
+}
+if err := h.MOSIP.CancelAppointment(c.Request.Context(), aid, authToken); err != nil {
+h.Log.Error("mosip.appointment.cancel.error", zap.String("aid", aid), zap.Error(err))
+c.JSON(http.StatusBadGateway, gin.H{"error": err.Error()})
+return
+}
+c.JSON(http.StatusOK, gin.H{"preRegistrationId": aid, "status": "CANCELLED"})
+}
+
+// ─── Registration: Packet Upload ─────────────────────────────────────────────
+
+// PacketUploadRequest is the request body for uploading a registration packet.
+type PacketUploadRequest struct {
+PacketID          string `json:"packetId" binding:"required"`
+PacketName        string `json:"packetName" binding:"required"`
+PacketContent     string `json:"packetContent" binding:"required"`
+Source            string `json:"source"`
+Process           string `json:"process"`
+SchemaVersion     string `json:"schemaVersion"`
+SchemaHash        string `json:"schemaHash"`
+SupervisorStatus  string `json:"supervisorStatus"`
+SupervisorComment string `json:"supervisorComment"`
+}
+
+// HandlePacketUpload uploads an encrypted registration packet to the Registration Processor.
+func (h *Handler) HandlePacketUpload(c *gin.Context) {
+if h.MOSIP == nil {
+c.JSON(http.StatusServiceUnavailable, gin.H{"error": "MOSIP client not initialised"})
+return
+}
+var req PacketUploadRequest
+if err := c.ShouldBindJSON(&req); err != nil {
+c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+return
+}
+if req.Source == "" {
+req.Source = "NEXTHUB"
+}
+if req.Process == "" {
+req.Process = "NEW"
+}
+if req.SupervisorStatus == "" {
+req.SupervisorStatus = "APPROVED"
+}
+packetData := mosip.PacketData{
+PacketID:          req.PacketID,
+PacketName:        req.PacketName,
+PacketContent:     req.PacketContent,
+Source:            req.Source,
+Process:           req.Process,
+SchemaVersion:     req.SchemaVersion,
+SchemaHash:        req.SchemaHash,
+SupervisorStatus:  req.SupervisorStatus,
+SupervisorComment: req.SupervisorComment,
+}
+rid, err := h.MOSIP.UploadRegistrationPacket(c.Request.Context(), packetData)
+if err != nil {
+h.Log.Error("mosip.packet.upload.error", zap.Error(err))
+c.JSON(http.StatusBadGateway, gin.H{"error": err.Error()})
+return
+}
+_ = h.Kafka.Publish(c.Request.Context(), kafka.TopicMOSIPRegistration,
+rid, map[string]interface{}{
+"event":          "PACKET_UPLOADED",
+"registrationId": rid,
+"packetId":       req.PacketID,
+"process":        req.Process,
+"timestamp":      time.Now().UTC().Format(time.RFC3339),
+})
+h.Log.Info("mosip.packet.upload.success", zap.String("rid", rid))
+c.JSON(http.StatusOK, gin.H{"registrationId": rid, "status": "RECEIVED"})
+}
+
+// HandlePacketStatus checks the processing status of a registration packet by RID.
+func (h *Handler) HandlePacketStatus(c *gin.Context) {
+if h.MOSIP == nil {
+c.JSON(http.StatusServiceUnavailable, gin.H{"error": "MOSIP client not initialised"})
+return
+}
+rid := c.Param("rid")
+statuses, err := h.MOSIP.GetPacketStatus(c.Request.Context(), rid)
+if err != nil {
+h.Log.Error("mosip.packet.status.error", zap.String("rid", rid), zap.Error(err))
+c.JSON(http.StatusBadGateway, gin.H{"error": err.Error()})
+return
+}
+c.JSON(http.StatusOK, gin.H{"registrationId": rid, "statuses": statuses})
+}
+
+// ─── Registration: UIN Lifecycle ─────────────────────────────────────────────
+
+// HandleUINStatus fetches the identity data for a UIN from the ID repository.
+func (h *Handler) HandleUINStatus(c *gin.Context) {
+if h.MOSIP == nil {
+c.JSON(http.StatusServiceUnavailable, gin.H{"error": "MOSIP client not initialised"})
+return
+}
+uin := c.Param("uin")
+authToken := c.GetHeader("Authorization")
+if authToken == "" {
+c.JSON(http.StatusUnauthorized, gin.H{"error": "missing Authorization header"})
+return
+}
+if len(authToken) > 7 && authToken[:7] == "Bearer " {
+authToken = authToken[7:]
+}
+data, err := h.MOSIP.GetUINIdentity(c.Request.Context(), uin, authToken)
+if err != nil {
+h.Log.Error("mosip.uin.status.error", zap.String("uin", uin), zap.Error(err))
+c.JSON(http.StatusBadGateway, gin.H{"error": err.Error()})
+return
+}
+c.JSON(http.StatusOK, gin.H{"uin": uin, "status": data.Status, "entity": data.Entity})
+}
+
+// UINUpdateRequest is the request body for updating a UIN's identity.
+type UINUpdateRequest struct {
+UIN            string                    `json:"uin" binding:"required"`
+RegistrationID string                    `json:"registrationId" binding:"required"`
+Identity       mosip.Identity            `json:"identity" binding:"required"`
+Documents      []mosip.IdentityDoc       `json:"documents,omitempty"`
+Biometrics     []mosip.IdentityBiometric `json:"biometrics,omitempty"`
+AuthToken      string                    `json:"authToken" binding:"required"`
+}
+
+// HandleUINUpdate updates the identity data for a UIN.
+func (h *Handler) HandleUINUpdate(c *gin.Context) {
+if h.MOSIP == nil {
+c.JSON(http.StatusServiceUnavailable, gin.H{"error": "MOSIP client not initialised"})
+return
+}
+var req UINUpdateRequest
+if err := c.ShouldBindJSON(&req); err != nil {
+c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+return
+}
+data := mosip.UINIdentityData{
+RegistrationID: req.RegistrationID,
+Identity:       req.Identity,
+Documents:      req.Documents,
+Biometrics:     req.Biometrics,
+}
+if err := h.MOSIP.UpdateUINIdentity(c.Request.Context(), req.UIN, data, req.AuthToken); err != nil {
+h.Log.Error("mosip.uin.update.error", zap.String("uin", req.UIN), zap.Error(err))
+c.JSON(http.StatusBadGateway, gin.H{"error": err.Error()})
+return
+}
+_ = h.Kafka.Publish(c.Request.Context(), kafka.TopicMOSIPRegistration,
+req.UIN, map[string]interface{}{
+"event":          "UIN_UPDATED",
+"uin":            req.UIN,
+"registrationId": req.RegistrationID,
+"timestamp":      time.Now().UTC().Format(time.RFC3339),
+})
+c.JSON(http.StatusOK, gin.H{"uin": req.UIN, "status": "UPDATED"})
+}
+
+// UINLockHandlerRequest is the request body for locking/unlocking a UIN.
+type UINLockHandlerRequest struct {
+UINHash   string `json:"uinHash" binding:"required"`
+SaltValue string `json:"saltValue" binding:"required"`
+AuthType  string `json:"authType" binding:"required"`
+AuthToken string `json:"authToken" binding:"required"`
+}
+
+// HandleUINLock locks specific authentication types for a UIN.
+func (h *Handler) HandleUINLock(c *gin.Context) {
+if h.MOSIP == nil {
+c.JSON(http.StatusServiceUnavailable, gin.H{"error": "MOSIP client not initialised"})
+return
+}
+var req UINLockHandlerRequest
+if err := c.ShouldBindJSON(&req); err != nil {
+c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+return
+}
+if err := h.MOSIP.LockUIN(c.Request.Context(), req.UINHash, req.SaltValue, req.AuthType, req.AuthToken); err != nil {
+h.Log.Error("mosip.uin.lock.error", zap.Error(err))
+c.JSON(http.StatusBadGateway, gin.H{"error": err.Error()})
+return
+}
+_ = h.Kafka.Publish(c.Request.Context(), kafka.TopicMOSIPRegistration,
+req.UINHash, map[string]interface{}{
+"event":     "UIN_LOCKED",
+"uinHash":   req.UINHash,
+"authType":  req.AuthType,
+"timestamp": time.Now().UTC().Format(time.RFC3339),
+})
+c.JSON(http.StatusOK, gin.H{"uinHash": req.UINHash, "authType": req.AuthType, "status": "LOCKED"})
+}
+
+// HandleUINUnlock unlocks specific authentication types for a UIN.
+func (h *Handler) HandleUINUnlock(c *gin.Context) {
+if h.MOSIP == nil {
+c.JSON(http.StatusServiceUnavailable, gin.H{"error": "MOSIP client not initialised"})
+return
+}
+var req UINLockHandlerRequest
+if err := c.ShouldBindJSON(&req); err != nil {
+c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+return
+}
+if err := h.MOSIP.UnlockUIN(c.Request.Context(), req.UINHash, req.SaltValue, req.AuthType, req.AuthToken); err != nil {
+h.Log.Error("mosip.uin.unlock.error", zap.Error(err))
+c.JSON(http.StatusBadGateway, gin.H{"error": err.Error()})
+return
+}
+_ = h.Kafka.Publish(c.Request.Context(), kafka.TopicMOSIPRegistration,
+req.UINHash, map[string]interface{}{
+"event":     "UIN_UNLOCKED",
+"uinHash":   req.UINHash,
+"authType":  req.AuthType,
+"timestamp": time.Now().UTC().Format(time.RFC3339),
+})
+c.JSON(http.StatusOK, gin.H{"uinHash": req.UINHash, "authType": req.AuthType, "status": "UNLOCKED"})
+}
+
+// ─── Registration: VID Generation ────────────────────────────────────────────
+
+// VIDGenerateRequest is the request body for generating a VID.
+type VIDGenerateRequest struct {
+UIN       string `json:"uin" binding:"required"`
+VIDType   string `json:"vidType"`
+AuthToken string `json:"authToken" binding:"required"`
+}
+
+// HandleVIDGenerate generates a Virtual ID (VID) for a UIN.
+func (h *Handler) HandleVIDGenerate(c *gin.Context) {
+if h.MOSIP == nil {
+c.JSON(http.StatusServiceUnavailable, gin.H{"error": "MOSIP client not initialised"})
+return
+}
+var req VIDGenerateRequest
+if err := c.ShouldBindJSON(&req); err != nil {
+c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+return
+}
+if req.VIDType == "" {
+req.VIDType = "PERPETUAL"
+}
+result, err := h.MOSIP.GenerateVID(c.Request.Context(), req.UIN, req.VIDType, req.AuthToken)
+if err != nil {
+h.Log.Error("mosip.vid.generate.error", zap.Error(err))
+c.JSON(http.StatusBadGateway, gin.H{"error": err.Error()})
+return
+}
+_ = h.Kafka.Publish(c.Request.Context(), kafka.TopicMOSIPRegistration,
+result.VID, map[string]interface{}{
+"event":      "VID_GENERATED",
+"vid":        result.VID,
+"vidType":    result.VIDType,
+"expiryTime": result.ExpiryTime,
+"timestamp":  time.Now().UTC().Format(time.RFC3339),
+})
+h.Log.Info("mosip.vid.generate.success", zap.String("vidType", result.VIDType))
+c.JSON(http.StatusOK, gin.H{
+"vid":         result.VID,
+"vidType":     result.VIDType,
+"expiryTime":  result.ExpiryTime,
+"generatedOn": result.GeneratedOn,
+})
+}
+
+// ─── Registration: Credential Issuance ───────────────────────────────────────
+
+// CredentialRequestBody is the request body for requesting a national ID credential.
+type CredentialRequestBody struct {
+CredentialType  string            `json:"credentialType"`
+Issuer          string            `json:"issuer"`
+RecepientID     string            `json:"recepientId" binding:"required"`
+RecepientIDType string            `json:"recepientIdType"`
+Shareable       bool              `json:"shareable"`
+AdditionalData  map[string]string `json:"additionalData,omitempty"`
+AuthToken       string            `json:"authToken" binding:"required"`
+}
+
+// HandleCredentialRequest requests generation of a national ID credential.
+func (h *Handler) HandleCredentialRequest(c *gin.Context) {
+if h.MOSIP == nil {
+c.JSON(http.StatusServiceUnavailable, gin.H{"error": "MOSIP client not initialised"})
+return
+}
+var req CredentialRequestBody
+if err := c.ShouldBindJSON(&req); err != nil {
+c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+return
+}
+if req.CredentialType == "" {
+req.CredentialType = "pdf"
+}
+if req.RecepientIDType == "" {
+req.RecepientIDType = "UIN"
+}
+issueData := mosip.CredentialIssueData{
+CredentialType:  req.CredentialType,
+Issuer:          req.Issuer,
+RecepientID:     req.RecepientID,
+RecepientIDType: req.RecepientIDType,
+Shareable:       req.Shareable,
+AdditionalData:  req.AdditionalData,
+}
+requestID, err := h.MOSIP.RequestCredentialIssuance(c.Request.Context(), issueData, req.AuthToken)
+if err != nil {
+h.Log.Error("mosip.credential.request.error", zap.Error(err))
+c.JSON(http.StatusBadGateway, gin.H{"error": err.Error()})
+return
+}
+_ = h.Kafka.Publish(c.Request.Context(), kafka.TopicMOSIPRegistration,
+requestID, map[string]interface{}{
+"event":          "CREDENTIAL_REQUESTED",
+"requestId":      requestID,
+"credentialType": req.CredentialType,
+"recepientId":    req.RecepientID,
+"timestamp":      time.Now().UTC().Format(time.RFC3339),
+})
+h.Log.Info("mosip.credential.request.success", zap.String("requestId", requestID))
+c.JSON(http.StatusOK, gin.H{"requestId": requestID, "status": "REQUESTED"})
+}
+
+// HandleCredentialStatus checks the status of a credential generation request.
+func (h *Handler) HandleCredentialStatus(c *gin.Context) {
+if h.MOSIP == nil {
+c.JSON(http.StatusServiceUnavailable, gin.H{"error": "MOSIP client not initialised"})
+return
+}
+requestID := c.Param("requestId")
+authToken := c.GetHeader("Authorization")
+if authToken == "" {
+c.JSON(http.StatusUnauthorized, gin.H{"error": "missing Authorization header"})
+return
+}
+if len(authToken) > 7 && authToken[:7] == "Bearer " {
+authToken = authToken[7:]
+}
+status, err := h.MOSIP.GetCredentialStatus(c.Request.Context(), requestID, authToken)
+if err != nil {
+h.Log.Error("mosip.credential.status.error", zap.String("requestId", requestID), zap.Error(err))
+c.JSON(http.StatusBadGateway, gin.H{"error": err.Error()})
+return
+}
+c.JSON(http.StatusOK, status)
+}

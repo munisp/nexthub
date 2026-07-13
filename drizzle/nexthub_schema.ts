@@ -1430,3 +1430,113 @@ export const g2pIdentityVerifications = pgTable("g2p_identity_verifications", {
   beneficiaryIdx:  index("g2p_idv_beneficiary_idx").on(t.beneficiaryId),
   txnIdx:          index("g2p_idv_txn_idx").on(t.transactionId),
 }));
+
+// ─── MOSIP CITIZEN REGISTRATION PIPELINE ─────────────────────────────────────
+
+/** Tracks citizen pre-registration applications (Stage 1 — AID issuance) */
+export const mosipRegistrations = pgTable("mosip_registrations", {
+  id:                serial("id").primaryKey(),
+  tenantId:          varchar("tenant_id", { length: 64 }).notNull(),
+  preRegistrationId: varchar("pre_registration_id", { length: 64 }).notNull().unique(),
+  createdBy:         varchar("created_by", { length: 128 }).notNull(),
+  langCode:          varchar("lang_code", { length: 8 }).notNull().default("eng"),
+  statusCode:        varchar("status_code", { length: 32 }).notNull().default("PENDING_APPOINTMENT"),
+  fullName:          varchar("full_name", { length: 256 }),
+  dateOfBirth:       varchar("date_of_birth", { length: 16 }),
+  gender:            varchar("gender", { length: 32 }),
+  email:             varchar("email", { length: 256 }),
+  phone:             varchar("phone", { length: 32 }),
+  postalCode:        varchar("postal_code", { length: 16 }),
+  appointmentDate:   varchar("appointment_date", { length: 16 }),
+  centerId:          varchar("center_id", { length: 64 }),
+  registrationId:    varchar("registration_id", { length: 64 }), // RID after packet upload
+  createdAt:         timestamp("created_at").notNull().defaultNow(),
+  updatedAt:         timestamp("updated_at").notNull().defaultNow(),
+}, (t) => ({
+  tenantIdx:         index("mosip_reg_tenant_idx").on(t.tenantId),
+  preRegIdx:         index("mosip_reg_prereg_idx").on(t.preRegistrationId),
+  statusIdx:         index("mosip_reg_status_idx").on(t.statusCode),
+}));
+
+/** Tracks registration packet submissions to the Registration Processor (Stage 2) */
+export const mosipRegistrationPackets = pgTable("mosip_registration_packets", {
+  id:             serial("id").primaryKey(),
+  tenantId:       varchar("tenant_id", { length: 64 }).notNull(),
+  registrationId: varchar("registration_id", { length: 64 }).notNull().unique(), // RID
+  packetId:       varchar("packet_id", { length: 128 }).notNull(),
+  packetName:     varchar("packet_name", { length: 256 }).notNull(),
+  source:         varchar("source", { length: 64 }).notNull().default("NEXTHUB"),
+  process:        varchar("process", { length: 16 }).notNull().default("NEW"),
+  schemaVersion:  varchar("schema_version", { length: 16 }),
+  statusCode:     varchar("status_code", { length: 64 }).notNull().default("RECEIVED"),
+  statusComment:  text("status_comment"),
+  uploadedAt:     timestamp("uploaded_at").notNull().defaultNow(),
+  processedAt:    timestamp("processed_at"),
+  createdAt:      timestamp("created_at").notNull().defaultNow(),
+  updatedAt:      timestamp("updated_at").notNull().defaultNow(),
+}, (t) => ({
+  tenantIdx:      index("mosip_pkt_tenant_idx").on(t.tenantId),
+  ridIdx:         index("mosip_pkt_rid_idx").on(t.registrationId),
+  statusIdx:      index("mosip_pkt_status_idx").on(t.statusCode),
+}));
+
+/** Stores issued UIN records and their lifecycle state (Stage 3 — UIN issuance) */
+export const mosipUinRecords = pgTable("mosip_uin_records", {
+  id:             serial("id").primaryKey(),
+  tenantId:       varchar("tenant_id", { length: 64 }).notNull(),
+  uinHash:        varchar("uin_hash", { length: 128 }).notNull().unique(), // SHA-256 of UIN
+  registrationId: varchar("registration_id", { length: 64 }),
+  status:         varchar("status", { length: 32 }).notNull().default("ACTIVATED"),
+  fullName:       varchar("full_name", { length: 256 }),
+  dateOfBirth:    varchar("date_of_birth", { length: 16 }),
+  gender:         varchar("gender", { length: 32 }),
+  lockedAuthTypes:jsonb("locked_auth_types"),  // array of locked auth types
+  issuedAt:       timestamp("issued_at"),
+  lastUpdatedAt:  timestamp("last_updated_at"),
+  createdAt:      timestamp("created_at").notNull().defaultNow(),
+  updatedAt:      timestamp("updated_at").notNull().defaultNow(),
+}, (t) => ({
+  tenantIdx:      index("mosip_uin_tenant_idx").on(t.tenantId),
+  uinHashIdx:     index("mosip_uin_hash_idx").on(t.uinHash),
+  statusIdx:      index("mosip_uin_status_idx").on(t.status),
+}));
+
+/** Stores Virtual IDs (VIDs) generated for UINs (Stage 4 — VID generation) */
+export const mosipVidRecords = pgTable("mosip_vid_records", {
+  id:          serial("id").primaryKey(),
+  tenantId:    varchar("tenant_id", { length: 64 }).notNull(),
+  vidHash:     varchar("vid_hash", { length: 128 }).notNull().unique(), // SHA-256 of VID
+  uinHash:     varchar("uin_hash", { length: 128 }).notNull(),
+  vidType:     varchar("vid_type", { length: 16 }).notNull().default("PERPETUAL"),
+  status:      varchar("status", { length: 16 }).notNull().default("ACTIVE"),
+  expiryTime:  timestamp("expiry_time"),
+  generatedOn: timestamp("generated_on").notNull().defaultNow(),
+  revokedAt:   timestamp("revoked_at"),
+  createdAt:   timestamp("created_at").notNull().defaultNow(),
+}, (t) => ({
+  tenantIdx:   index("mosip_vid_tenant_idx").on(t.tenantId),
+  uinHashIdx:  index("mosip_vid_uin_hash_idx").on(t.uinHash),
+  statusIdx:   index("mosip_vid_status_idx").on(t.status),
+}));
+
+/** Tracks national ID credential issuance requests (Stage 5 — credential issuance) */
+export const mosipCredentialRequests = pgTable("mosip_credential_requests", {
+  id:              serial("id").primaryKey(),
+  tenantId:        varchar("tenant_id", { length: 64 }).notNull(),
+  requestId:       varchar("request_id", { length: 128 }).notNull().unique(),
+  credentialType:  varchar("credential_type", { length: 32 }).notNull().default("pdf"),
+  issuer:          varchar("issuer", { length: 128 }),
+  recepientId:     varchar("recepient_id", { length: 64 }).notNull(),
+  recepientIdType: varchar("recepient_id_type", { length: 8 }).notNull().default("UIN"),
+  status:          varchar("status", { length: 32 }).notNull().default("REQUESTED"),
+  statusComment:   text("status_comment"),
+  dataShareUrl:    text("data_share_url"),
+  requestedAt:     timestamp("requested_at").notNull().defaultNow(),
+  issuedAt:        timestamp("issued_at"),
+  createdAt:       timestamp("created_at").notNull().defaultNow(),
+  updatedAt:       timestamp("updated_at").notNull().defaultNow(),
+}, (t) => ({
+  tenantIdx:       index("mosip_cred_tenant_idx").on(t.tenantId),
+  requestIdx:      index("mosip_cred_request_idx").on(t.requestId),
+  statusIdx:       index("mosip_cred_status_idx").on(t.status),
+}));

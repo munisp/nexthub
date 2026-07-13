@@ -2282,3 +2282,210 @@ export async function verifyG2PBeneficiaryViaMiddleware(
 ): Promise<G2PBeneficiaryVerifyResponse | null> {
   return safe("POST", "/v1/mosip/g2p/verify-beneficiary", req);
 }
+
+// ─── MOSIP Citizen Registration Pipeline ─────────────────────────────────────
+
+/** Create a MOSIP pre-registration application (Stage 1 of citizen registration) */
+export interface PreRegCreateRequest {
+  demographicDetails: {
+    identity: {
+      IDSchemaVersion: number;
+      fullName: Array<{ language: string; value: string }>;
+      dateOfBirth: string;
+      gender: Array<{ language: string; value: string }>;
+      residenceStatus: Array<{ language: string; value: string }>;
+      addressLine1: Array<{ language: string; value: string }>;
+      region: Array<{ language: string; value: string }>;
+      province: Array<{ language: string; value: string }>;
+      city: Array<{ language: string; value: string }>;
+      zone: Array<{ language: string; value: string }>;
+      postalCode: string;
+      phone: string;
+      email: string;
+    };
+  };
+  langCode: string;
+  createdBy: string;
+  authToken: string;
+}
+export interface PreRegCreateResponse {
+  preRegistrationId: string;
+  statusCode: string;
+  createdDateTime: string;
+}
+export async function createPreRegistrationViaMiddleware(
+  req: PreRegCreateRequest,
+): Promise<PreRegCreateResponse | null> {
+  return safe("POST", "/v1/mosip/registration/pre-reg", req);
+}
+
+/** Get a pre-registration application by AID */
+export async function getPreRegistrationViaMiddleware(
+  aid: string,
+  authToken: string,
+): Promise<Record<string, unknown> | null> {
+  return safe("GET", `/v1/mosip/registration/pre-reg/${aid}`, { authToken });
+}
+
+/** Book a registration center appointment */
+export interface AppointmentBookRequest {
+  preRegistrationId: string;
+  registrationCenterId: string;
+  slotFromTime: string;
+  slotToTime: string;
+  appointmentDate: string;
+  authToken: string;
+}
+export interface AppointmentBookResponse {
+  preRegistrationId: string;
+  status: "BOOKED";
+  appointmentDate: string;
+  centerId: string;
+}
+export async function bookAppointmentViaMiddleware(
+  req: AppointmentBookRequest,
+): Promise<AppointmentBookResponse | null> {
+  return safe("POST", "/v1/mosip/registration/appointment", req);
+}
+
+/** Cancel a registration appointment by AID */
+export async function cancelAppointmentViaMiddleware(
+  aid: string,
+  authToken: string,
+): Promise<{ preRegistrationId: string; status: "CANCELLED" } | null> {
+  return safe("DELETE", `/v1/mosip/registration/appointment/${aid}`, { authToken });
+}
+
+/** Upload an encrypted registration packet to the Registration Processor (Stage 2) */
+export interface PacketUploadRequest {
+  packetId: string;
+  packetName: string;
+  packetContent: string; // base64-encoded encrypted zip
+  source?: string;
+  process?: "NEW" | "UPDATE" | "LOST";
+  schemaVersion?: string;
+  schemaHash?: string;
+  supervisorStatus?: string;
+  supervisorComment?: string;
+}
+export interface PacketUploadResponse {
+  registrationId: string;
+  status: "RECEIVED";
+}
+export async function uploadPacketViaMiddleware(
+  req: PacketUploadRequest,
+): Promise<PacketUploadResponse | null> {
+  return safe("POST", "/v1/mosip/registration/packet", req);
+}
+
+/** Check the processing status of a registration packet by RID */
+export interface PacketStatus {
+  registrationId: string;
+  statusCode: string;
+  statusComment: string;
+  subStatusCode: string;
+  transactionTypeCode: string;
+  updatedDateTime: string;
+}
+export async function getPacketStatusViaMiddleware(
+  rid: string,
+): Promise<{ registrationId: string; statuses: PacketStatus[] } | null> {
+  return safe("GET", `/v1/mosip/registration/packet/${rid}/status`, null);
+}
+
+/** Fetch the identity data for a UIN from the ID repository */
+export async function getUINStatusViaMiddleware(
+  uin: string,
+  authToken: string,
+): Promise<{ uin: string; status: string; entity: string } | null> {
+  return safe("GET", `/v1/mosip/registration/uin/${uin}`, { authToken });
+}
+
+/** Update the identity data for a UIN */
+export interface UINUpdateRequest {
+  uin: string;
+  registrationId: string;
+  identity: Record<string, unknown>;
+  documents?: Array<{ category: string; value: string }>;
+  biometrics?: Array<{ type: string; value: string }>;
+  authToken: string;
+}
+export async function updateUINViaMiddleware(
+  req: UINUpdateRequest,
+): Promise<{ uin: string; status: "UPDATED" } | null> {
+  return safe("PUT", "/v1/mosip/registration/uin", req);
+}
+
+/** Lock specific authentication types for a UIN */
+export interface UINLockRequest {
+  uinHash: string;
+  saltValue: string;
+  authType: "bio" | "otp" | "demo";
+  authToken: string;
+}
+export async function lockUINViaMiddleware(
+  req: UINLockRequest,
+): Promise<{ uinHash: string; authType: string; status: "LOCKED" } | null> {
+  return safe("POST", "/v1/mosip/registration/uin/lock", req);
+}
+
+/** Unlock specific authentication types for a UIN */
+export async function unlockUINViaMiddleware(
+  req: UINLockRequest,
+): Promise<{ uinHash: string; authType: string; status: "UNLOCKED" } | null> {
+  return safe("POST", "/v1/mosip/registration/uin/unlock", req);
+}
+
+/** Generate a Virtual ID (VID) for a UIN */
+export interface VIDGenerateRequest {
+  uin: string;
+  vidType?: "PERPETUAL" | "TEMPORARY";
+  authToken: string;
+}
+export interface VIDGenerateResponse {
+  vid: string;
+  vidType: string;
+  expiryTime: string;
+  generatedOn: string;
+}
+export async function generateVIDViaMiddleware(
+  req: VIDGenerateRequest,
+): Promise<VIDGenerateResponse | null> {
+  return safe("POST", "/v1/mosip/registration/vid", req);
+}
+
+/** Request generation of a national ID credential (PDF card, QR code, or VC) */
+export interface CredentialIssuanceRequest {
+  credentialType?: "pdf" | "qrcode" | "euin" | "vercred";
+  issuer?: string;
+  recepientId: string;
+  recepientIdType?: "UIN" | "VID";
+  shareable?: boolean;
+  additionalData?: Record<string, string>;
+  authToken: string;
+}
+export interface CredentialIssuanceResponse {
+  requestId: string;
+  status: "REQUESTED";
+}
+export async function requestIDCardViaMiddleware(
+  req: CredentialIssuanceRequest,
+): Promise<CredentialIssuanceResponse | null> {
+  return safe("POST", "/v1/mosip/registration/credential", req);
+}
+
+/** Check the status of a credential generation request */
+export interface CredentialStatusResponse {
+  requestId: string;
+  credentialType: string;
+  status: "ISSUED" | "PRINTING" | "ERROR";
+  statusComment: string;
+  dataShareUrl?: string;
+  updatedDateTime: string;
+}
+export async function getCredentialStatusViaMiddleware(
+  requestId: string,
+  authToken: string,
+): Promise<CredentialStatusResponse | null> {
+  return safe("GET", `/v1/mosip/registration/credential/${requestId}`, { authToken });
+}

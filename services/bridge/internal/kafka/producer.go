@@ -38,6 +38,7 @@ const (
 	TopicMOSIPVCIssued        = "nexthub.mosip.vc.issued.v1"
 	TopicMOSIPG2PVerification = "nexthub.mosip.g2p.verification.v1"
 	TopicMOSIPOTPSent         = "nexthub.mosip.otp.sent.v1"
+	TopicMOSIPRegistration    = "nexthub.mosip.registration.v1"
 )
 
 // Envelope wraps every event with standard metadata.

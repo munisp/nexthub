@@ -429,4 +429,286 @@ export const nexthubIdentityDirectoryRouter = router({
       });
       return { vcId: vc.id, ...result };
     }),
+  // ─── MOSIP Citizen Registration Pipeline ─────────────────────────────────────
+
+  /** Stage 1: Create a MOSIP pre-registration application and obtain an AID */
+  createPreRegistration: protectedProcedure
+    .input(z.object({
+      demographicDetails: z.object({
+        identity: z.object({
+          IDSchemaVersion:  z.number(),
+          fullName:         z.array(z.object({ language: z.string(), value: z.string() })),
+          dateOfBirth:      z.string(),
+          gender:           z.array(z.object({ language: z.string(), value: z.string() })),
+          residenceStatus:  z.array(z.object({ language: z.string(), value: z.string() })),
+          addressLine1:     z.array(z.object({ language: z.string(), value: z.string() })),
+          region:           z.array(z.object({ language: z.string(), value: z.string() })),
+          province:         z.array(z.object({ language: z.string(), value: z.string() })),
+          city:             z.array(z.object({ language: z.string(), value: z.string() })),
+          zone:             z.array(z.object({ language: z.string(), value: z.string() })),
+          postalCode:       z.string(),
+          phone:            z.string(),
+          email:            z.string().email(),
+        }),
+      }),
+      langCode:   z.string().default("eng"),
+      createdBy:  z.string(),
+      authToken:  z.string(),
+    }))
+    .mutation(async ({ input, ctx }) => {
+      const { createPreRegistrationViaMiddleware } = await import("../middlewareBridge");
+      const { db } = await import("../db");
+      const { mosipRegistrations } = await import("../../drizzle/nexthub_schema");
+      const result = await createPreRegistrationViaMiddleware(input);
+      if (!result) throw new Error("MOSIP pre-registration service unavailable");
+      const identity = input.demographicDetails.identity;
+      await db.insert(mosipRegistrations).values({
+        tenantId:          String(ctx.user!.id),
+        preRegistrationId: result.preRegistrationId,
+        createdBy:         input.createdBy,
+        langCode:          input.langCode,
+        statusCode:        result.statusCode,
+        fullName:          identity.fullName[0]?.value ?? null,
+        dateOfBirth:       identity.dateOfBirth,
+        gender:            identity.gender[0]?.value ?? null,
+        email:             identity.email,
+        phone:             identity.phone,
+        postalCode:        identity.postalCode,
+      }).onConflictDoNothing();
+      return result;
+    }),
+
+  /** Get a pre-registration application by AID */
+  getPreRegistration: protectedProcedure
+    .input(z.object({ aid: z.string(), authToken: z.string() }))
+    .query(async ({ input }) => {
+      const { getPreRegistrationViaMiddleware } = await import("../middlewareBridge");
+      const result = await getPreRegistrationViaMiddleware(input.aid, input.authToken);
+      if (!result) throw new Error("Pre-registration not found");
+      return result;
+    }),
+
+  /** Book a registration center appointment for a pre-registration application */
+  bookAppointment: protectedProcedure
+    .input(z.object({
+      preRegistrationId:    z.string(),
+      registrationCenterId: z.string(),
+      slotFromTime:         z.string(),
+      slotToTime:           z.string(),
+      appointmentDate:      z.string(),
+      authToken:            z.string(),
+    }))
+    .mutation(async ({ input, ctx }) => {
+      const { bookAppointmentViaMiddleware } = await import("../middlewareBridge");
+      const { db } = await import("../db");
+      const { mosipRegistrations } = await import("../../drizzle/nexthub_schema");
+      const { eq } = await import("drizzle-orm");
+      const result = await bookAppointmentViaMiddleware(input);
+      if (!result) throw new Error("Appointment booking failed");
+      await db.update(mosipRegistrations)
+        .set({
+          statusCode:      "APPOINTMENT_BOOKED",
+          appointmentDate: input.appointmentDate,
+          centerId:        input.registrationCenterId,
+          updatedAt:       new Date(),
+        })
+        .where(eq(mosipRegistrations.preRegistrationId, input.preRegistrationId));
+      return result;
+    }),
+
+  /** Cancel a registration appointment */
+  cancelAppointment: protectedProcedure
+    .input(z.object({ aid: z.string(), authToken: z.string() }))
+    .mutation(async ({ input, ctx }) => {
+      const { cancelAppointmentViaMiddleware } = await import("../middlewareBridge");
+      const { db } = await import("../db");
+      const { mosipRegistrations } = await import("../../drizzle/nexthub_schema");
+      const { eq } = await import("drizzle-orm");
+      const result = await cancelAppointmentViaMiddleware(input.aid, input.authToken);
+      if (!result) throw new Error("Appointment cancellation failed");
+      await db.update(mosipRegistrations)
+        .set({ statusCode: "APPOINTMENT_CANCELLED", updatedAt: new Date() })
+        .where(eq(mosipRegistrations.preRegistrationId, input.aid));
+      return result;
+    }),
+
+  /** Stage 2: Upload an encrypted registration packet to the Registration Processor */
+  uploadPacket: protectedProcedure
+    .input(z.object({
+      packetId:          z.string(),
+      packetName:        z.string(),
+      packetContent:     z.string(),
+      source:            z.string().optional(),
+      process:           z.enum(["NEW", "UPDATE", "LOST"]).optional(),
+      schemaVersion:     z.string().optional(),
+      schemaHash:        z.string().optional(),
+      supervisorStatus:  z.string().optional(),
+      supervisorComment: z.string().optional(),
+    }))
+    .mutation(async ({ input, ctx }) => {
+      const { uploadPacketViaMiddleware } = await import("../middlewareBridge");
+      const { db } = await import("../db");
+      const { mosipRegistrationPackets } = await import("../../drizzle/nexthub_schema");
+      const result = await uploadPacketViaMiddleware(input);
+      if (!result) throw new Error("Packet upload failed");
+      await db.insert(mosipRegistrationPackets).values({
+        tenantId:       String(ctx.user!.id),
+        registrationId: result.registrationId,
+        packetId:       input.packetId,
+        packetName:     input.packetName,
+        source:         input.source ?? "NEXTHUB",
+        process:        input.process ?? "NEW",
+        schemaVersion:  input.schemaVersion ?? null,
+        statusCode:     "RECEIVED",
+      }).onConflictDoNothing();
+      return result;
+    }),
+
+  /** Check the processing status of a registration packet by RID */
+  getPacketStatus: protectedProcedure
+    .input(z.object({ rid: z.string() }))
+    .query(async ({ input }) => {
+      const { getPacketStatusViaMiddleware } = await import("../middlewareBridge");
+      const result = await getPacketStatusViaMiddleware(input.rid);
+      if (!result) throw new Error("Packet status unavailable");
+      return result;
+    }),
+
+  /** Stage 3: Fetch the identity data for a UIN from the ID repository */
+  getUINStatus: protectedProcedure
+    .input(z.object({ uin: z.string(), authToken: z.string() }))
+    .query(async ({ input }) => {
+      const { getUINStatusViaMiddleware } = await import("../middlewareBridge");
+      const result = await getUINStatusViaMiddleware(input.uin, input.authToken);
+      if (!result) throw new Error("UIN not found");
+      return result;
+    }),
+
+  /** Update the identity data for a UIN */
+  updateUIN: protectedProcedure
+    .input(z.object({
+      uin:            z.string(),
+      registrationId: z.string(),
+      identity:       z.record(z.string(), z.unknown()),
+      documents:      z.array(z.object({ category: z.string(), value: z.string() })).optional(),
+      biometrics:     z.array(z.object({ type: z.string(), value: z.string() })).optional(),
+      authToken:      z.string(),
+    }))
+    .mutation(async ({ input }) => {
+      const { updateUINViaMiddleware } = await import("../middlewareBridge");
+      const result = await updateUINViaMiddleware(input);
+      if (!result) throw new Error("UIN update failed");
+      return result;
+    }),
+
+  /** Lock specific authentication types for a UIN */
+  lockUIN: protectedProcedure
+    .input(z.object({
+      uinHash:   z.string(),
+      saltValue: z.string(),
+      authType:  z.enum(["bio", "otp", "demo"]),
+      authToken: z.string(),
+    }))
+    .mutation(async ({ input }) => {
+      const { lockUINViaMiddleware } = await import("../middlewareBridge");
+      const result = await lockUINViaMiddleware(input);
+      if (!result) throw new Error("UIN lock failed");
+      return result;
+    }),
+
+  /** Unlock specific authentication types for a UIN */
+  unlockUIN: protectedProcedure
+    .input(z.object({
+      uinHash:   z.string(),
+      saltValue: z.string(),
+      authType:  z.enum(["bio", "otp", "demo"]),
+      authToken: z.string(),
+    }))
+    .mutation(async ({ input }) => {
+      const { unlockUINViaMiddleware } = await import("../middlewareBridge");
+      const result = await unlockUINViaMiddleware(input);
+      if (!result) throw new Error("UIN unlock failed");
+      return result;
+    }),
+
+  /** Stage 4: Generate a Virtual ID (VID) for a UIN */
+  generateVID: protectedProcedure
+    .input(z.object({
+      uin:       z.string(),
+      vidType:   z.enum(["PERPETUAL", "TEMPORARY"]).optional(),
+      authToken: z.string(),
+    }))
+    .mutation(async ({ input, ctx }) => {
+      const { generateVIDViaMiddleware } = await import("../middlewareBridge");
+      const { db } = await import("../db");
+      const { mosipVidRecords } = await import("../../drizzle/nexthub_schema");
+      const { createHash } = await import("crypto");
+      const result = await generateVIDViaMiddleware(input);
+      if (!result) throw new Error("VID generation failed");
+      const vidHash = createHash("sha256").update(result.vid).digest("hex");
+      const uinHash = createHash("sha256").update(input.uin).digest("hex");
+      await db.insert(mosipVidRecords).values({
+        tenantId:    String(ctx.user!.id),
+        vidHash,
+        uinHash,
+        vidType:     result.vidType,
+        status:      "ACTIVE",
+        expiryTime:  result.expiryTime ? new Date(result.expiryTime) : null,
+        generatedOn: new Date(result.generatedOn),
+      }).onConflictDoNothing();
+      return result;
+    }),
+
+  /** Stage 5: Request generation of a national ID credential (PDF card, QR code, or VC) */
+  requestIDCard: protectedProcedure
+    .input(z.object({
+      credentialType:  z.enum(["pdf", "qrcode", "euin", "vercred"]).optional(),
+      issuer:          z.string().optional(),
+      recepientId:     z.string(),
+      recepientIdType: z.enum(["UIN", "VID"]).optional(),
+      shareable:       z.boolean().optional(),
+      additionalData:  z.record(z.string(), z.string()).optional(),
+      authToken:       z.string(),
+    }))
+    .mutation(async ({ input, ctx }) => {
+      const { requestIDCardViaMiddleware } = await import("../middlewareBridge");
+      const { db } = await import("../db");
+      const { mosipCredentialRequests } = await import("../../drizzle/nexthub_schema");
+      const result = await requestIDCardViaMiddleware(input);
+      if (!result) throw new Error("Credential issuance request failed");
+      await db.insert(mosipCredentialRequests).values({
+        tenantId:        String(ctx.user!.id),
+        requestId:       result.requestId,
+        credentialType:  input.credentialType ?? "pdf",
+        issuer:          input.issuer ?? null,
+        recepientId:     input.recepientId,
+        recepientIdType: input.recepientIdType ?? "UIN",
+        status:          "REQUESTED",
+      }).onConflictDoNothing();
+      return result;
+    }),
+
+  /** Check the status of a credential generation request */
+  getCredentialStatus: protectedProcedure
+    .input(z.object({ requestId: z.string(), authToken: z.string() }))
+    .query(async ({ input, ctx }) => {
+      const { getCredentialStatusViaMiddleware } = await import("../middlewareBridge");
+      const { db } = await import("../db");
+      const { mosipCredentialRequests } = await import("../../drizzle/nexthub_schema");
+      const { eq } = await import("drizzle-orm");
+      const result = await getCredentialStatusViaMiddleware(input.requestId, input.authToken);
+      if (!result) throw new Error("Credential status unavailable");
+      if (result.status === "ISSUED") {
+        await db.update(mosipCredentialRequests)
+          .set({
+            status:       "ISSUED",
+            dataShareUrl: result.dataShareUrl ?? null,
+            issuedAt:     new Date(),
+            updatedAt:    new Date(),
+          })
+          .where(eq(mosipCredentialRequests.requestId, input.requestId));
+      }
+      return result;
+    }),
+
 });

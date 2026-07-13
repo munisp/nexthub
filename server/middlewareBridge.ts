@@ -2620,3 +2620,77 @@ export interface FacePublicKeyResult {
 export async function getFacePublicKeyViaMiddleware(): Promise<FacePublicKeyResult | null> {
   return safe('GET', '/v1/face/public-key', undefined);
 }
+
+// ─── SOTA: Active Liveness ────────────────────────────────────────────────────
+
+export interface ActiveLivenessChallenge {
+  session_id: string; challenge_type: string; instruction: string;
+  expires_at: string; nonce: string;
+}
+export interface ActiveLivenessVerifyResult {
+  session_id: string; passed: boolean; challenge_type: string;
+  confidence: number; frames_analyzed: number; failure_reason?: string;
+}
+export async function startActiveLivenessViaMiddleware(
+  challenge_types?: string[], tenant_id?: string
+): Promise<ActiveLivenessChallenge | null> {
+  return safe('POST', '/v1/face/liveness/active', { challenge_types, tenant_id });
+}
+export async function verifyActiveLivenessViaMiddleware(
+  session_id: string, frames_b64: string[], tenant_id?: string
+): Promise<ActiveLivenessVerifyResult | null> {
+  return safe('POST', '/v1/face/liveness/active/verify', { session_id, frames_b64, tenant_id });
+}
+
+// ─── SOTA: Deepfake Detection ─────────────────────────────────────────────────
+
+export interface DeepfakeResult {
+  is_deepfake: boolean; deepfake_score: number; attack_type?: string;
+  dct_artifact_score: number; consistency_score: number; confidence: number;
+}
+export async function detectDeepfakeViaMiddleware(
+  image_b64: string, tenant_id?: string, context?: string
+): Promise<DeepfakeResult | null> {
+  return safe('POST', '/v1/face/deepfake', { image_b64, tenant_id, context });
+}
+
+// ─── SOTA: Face Attributes ────────────────────────────────────────────────────
+
+export interface FaceAttributes {
+  age_estimate?: number; age_bracket?: string;
+  gender?: string; gender_confidence?: number;
+  emotion?: string; emotion_scores?: Record<string, number>;
+  pose_yaw: number; pose_pitch: number; pose_roll: number;
+  face_landmarks_count: number; occlusion_regions?: string[];
+}
+export async function getFaceAttributesViaMiddleware(
+  image_b64: string, actions?: string[], tenant_id?: string
+): Promise<FaceAttributes | null> {
+  return safe('POST', '/v1/face/attributes', { image_b64, actions, tenant_id });
+}
+
+// ─── SOTA: Video Verification ─────────────────────────────────────────────────
+
+export interface VideoVerifyResult {
+  verified: boolean; mean_similarity: number; min_similarity: number;
+  max_similarity: number; frames_analyzed: number; frames_passed: number;
+  temporal_consistency: number; liveness_passed?: boolean; processing_ms: number;
+}
+export async function videoVerifyViaMiddleware(
+  frames_b64: string[], reference_image_b64: string,
+  subject_id?: string, require_liveness?: boolean, context?: string
+): Promise<VideoVerifyResult | null> {
+  return safe('POST', '/v1/face/video-verify', {
+    frames_b64, reference_image_b64, subject_id, require_liveness, context
+  });
+}
+
+// ─── SOTA: Bias Audit ─────────────────────────────────────────────────────────
+
+export interface BiasReport {
+  generated_at: string; window_secs: number; total_operations: number;
+  groups: unknown[]; alerts: unknown[]; summary: unknown;
+}
+export async function getBiasReportViaMiddleware(): Promise<BiasReport | null> {
+  return safe('GET', '/v1/face/bias-report', undefined);
+}

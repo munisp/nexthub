@@ -345,3 +345,159 @@ func (c *Client) post(ctx context.Context, path string, body, out interface{}) e
 	}
 	return nil
 }
+
+// ─── SOTA: Active Liveness ────────────────────────────────────────────────────
+
+type ActiveLivenessStartRequest struct {
+SessionID      string   `json:"session_id,omitempty"`
+ChallengeTypes []string `json:"challenge_types,omitempty"`
+TenantID       string   `json:"tenant_id,omitempty"`
+}
+
+type ActiveLivenessChallenge struct {
+SessionID     string `json:"session_id"`
+ChallengeType string `json:"challenge_type"`
+Instruction   string `json:"instruction"`
+ExpiresAt     string `json:"expires_at"`
+Nonce         string `json:"nonce"`
+}
+
+type ActiveLivenessVerifyRequest struct {
+SessionID  string   `json:"session_id"`
+FramesB64  []string `json:"frames_b64"`
+TenantID   string   `json:"tenant_id,omitempty"`
+}
+
+type ActiveLivenessVerifyResult struct {
+SessionID     string  `json:"session_id"`
+Passed        bool    `json:"passed"`
+ChallengeType string  `json:"challenge_type"`
+Confidence    float64 `json:"confidence"`
+FramesAnalyzed int    `json:"frames_analyzed"`
+FailureReason string  `json:"failure_reason,omitempty"`
+}
+
+// ─── SOTA: Deepfake Detection ─────────────────────────────────────────────────
+
+type DeepfakeDetectRequest struct {
+ImageB64 string `json:"image_b64"`
+TenantID string `json:"tenant_id,omitempty"`
+Context  string `json:"context,omitempty"`
+}
+
+type DeepfakeResult struct {
+IsDeepfake       bool    `json:"is_deepfake"`
+DeepfakeScore    float64 `json:"deepfake_score"`
+AttackType       string  `json:"attack_type,omitempty"`
+DctArtifactScore float64 `json:"dct_artifact_score"`
+ConsistencyScore float64 `json:"consistency_score"`
+Confidence       float64 `json:"confidence"`
+}
+
+// ─── SOTA: Face Attributes ────────────────────────────────────────────────────
+
+type FaceAttributeRequest struct {
+ImageB64 string   `json:"image_b64"`
+TenantID string   `json:"tenant_id,omitempty"`
+Actions  []string `json:"actions,omitempty"`
+}
+
+type FaceAttributes struct {
+AgeEstimate       *float64           `json:"age_estimate,omitempty"`
+AgeBracket        string             `json:"age_bracket,omitempty"`
+Gender            string             `json:"gender,omitempty"`
+GenderConfidence  *float64           `json:"gender_confidence,omitempty"`
+Emotion           string             `json:"emotion,omitempty"`
+EmotionScores     map[string]float64 `json:"emotion_scores,omitempty"`
+PoseYaw           float64            `json:"pose_yaw"`
+PosePitch         float64            `json:"pose_pitch"`
+PoseRoll          float64            `json:"pose_roll"`
+FaceLandmarksCount int               `json:"face_landmarks_count"`
+OcclusionRegions  []string           `json:"occlusion_regions,omitempty"`
+}
+
+// ─── SOTA: Video Verification ─────────────────────────────────────────────────
+
+type VideoVerifyRequest struct {
+FramesB64          []string `json:"frames_b64"`
+ReferenceImageB64  string   `json:"reference_image_b64"`
+SubjectID          string   `json:"subject_id,omitempty"`
+TenantID           string   `json:"tenant_id,omitempty"`
+RequireLiveness    bool     `json:"require_liveness"`
+Context            string   `json:"context,omitempty"`
+}
+
+type VideoVerifyResult struct {
+Verified            bool    `json:"verified"`
+MeanSimilarity      float64 `json:"mean_similarity"`
+MinSimilarity       float64 `json:"min_similarity"`
+MaxSimilarity       float64 `json:"max_similarity"`
+FramesAnalyzed      int     `json:"frames_analyzed"`
+FramesPassed        int     `json:"frames_passed"`
+TemporalConsistency float64 `json:"temporal_consistency"`
+LivenessPassed      *bool   `json:"liveness_passed,omitempty"`
+ProcessingMs        float64 `json:"processing_ms"`
+}
+
+// ─── SOTA: Bias Audit ─────────────────────────────────────────────────────────
+
+type BiasReport struct {
+GeneratedAt      string        `json:"generated_at"`
+WindowSecs       int           `json:"window_secs"`
+TotalOperations  int64         `json:"total_operations"`
+Groups           []interface{} `json:"groups"`
+Alerts           []interface{} `json:"alerts"`
+Summary          interface{}   `json:"summary"`
+}
+
+// ─── SOTA Client Methods ──────────────────────────────────────────────────────
+
+func (c *Client) StartActiveLiveness(ctx context.Context, req ActiveLivenessStartRequest) (*ActiveLivenessChallenge, error) {
+var out ActiveLivenessChallenge
+return &out, c.post(ctx, "/v1/face/liveness/active", req, &out)
+}
+
+func (c *Client) VerifyActiveLiveness(ctx context.Context, req ActiveLivenessVerifyRequest) (*ActiveLivenessVerifyResult, error) {
+var out ActiveLivenessVerifyResult
+return &out, c.post(ctx, "/v1/face/liveness/active/verify", req, &out)
+}
+
+func (c *Client) DetectDeepfake(ctx context.Context, req DeepfakeDetectRequest) (*DeepfakeResult, error) {
+var out DeepfakeResult
+return &out, c.post(ctx, "/v1/face/deepfake", req, &out)
+}
+
+func (c *Client) GetFaceAttributes(ctx context.Context, req FaceAttributeRequest) (*FaceAttributes, error) {
+var out FaceAttributes
+return &out, c.post(ctx, "/v1/face/attributes", req, &out)
+}
+
+func (c *Client) VideoVerify(ctx context.Context, req VideoVerifyRequest) (*VideoVerifyResult, error) {
+var out VideoVerifyResult
+return &out, c.post(ctx, "/v1/face/video-verify", req, &out)
+}
+
+func (c *Client) GetBiasReport(ctx context.Context) (*BiasReport, error) {
+var out BiasReport
+return &out, c.get(ctx, "/v1/audit/bias", &out)
+}
+
+func (c *Client) get(ctx context.Context, path string, out interface{}) error {
+req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.cfg.BaseURL+path, nil)
+if err != nil {
+return fmt.Errorf("build request: %w", err)
+}
+resp, err := c.http.Do(req)
+if err != nil {
+return fmt.Errorf("http get %s: %w", path, err)
+}
+defer resp.Body.Close()
+raw, err := io.ReadAll(resp.Body)
+if err != nil {
+return fmt.Errorf("read response: %w", err)
+}
+if resp.StatusCode >= 400 {
+return fmt.Errorf("face-biometric service error %d: %s", resp.StatusCode, string(raw))
+}
+return json.Unmarshal(raw, out)
+}

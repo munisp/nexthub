@@ -314,3 +314,94 @@ func (h *Handler) HandleFacePublicKey(c *gin.Context) {
 	}
 	c.JSON(http.StatusOK, result)
 }
+
+// ─── SOTA: Active Liveness — Start ───────────────────────────────────────────
+
+func (h *Handler) HandleActiveLivenessStart(c *gin.Context) {
+var req facebiometric.ActiveLivenessStartRequest
+if err := c.ShouldBindJSON(&req); err != nil {
+c.JSON(400, gin.H{"error": err.Error()})
+return
+}
+result, err := h.FaceBiometric.StartActiveLiveness(c.Request.Context(), req)
+if err != nil {
+c.JSON(502, gin.H{"error": err.Error()})
+return
+}
+c.JSON(200, result)
+}
+
+// ─── SOTA: Active Liveness — Verify ──────────────────────────────────────────
+
+func (h *Handler) HandleActiveLivenessVerify(c *gin.Context) {
+var req facebiometric.ActiveLivenessVerifyRequest
+if err := c.ShouldBindJSON(&req); err != nil {
+c.JSON(400, gin.H{"error": err.Error()})
+return
+}
+result, err := h.FaceBiometric.VerifyActiveLiveness(c.Request.Context(), req)
+if err != nil {
+c.JSON(502, gin.H{"error": err.Error()})
+return
+}
+c.JSON(200, result)
+}
+
+// ─── SOTA: Deepfake Detection ─────────────────────────────────────────────────
+
+func (h *Handler) HandleDeepfakeDetect(c *gin.Context) {
+var req facebiometric.DeepfakeDetectRequest
+if err := c.ShouldBindJSON(&req); err != nil {
+c.JSON(400, gin.H{"error": err.Error()})
+return
+}
+result, err := h.FaceBiometric.DetectDeepfake(c.Request.Context(), req)
+if err != nil {
+c.JSON(502, gin.H{"error": err.Error()})
+return
+}
+c.JSON(200, result)
+}
+
+// ─── SOTA: Face Attributes ────────────────────────────────────────────────────
+
+func (h *Handler) HandleFaceAttributes(c *gin.Context) {
+var req facebiometric.FaceAttributeRequest
+if err := c.ShouldBindJSON(&req); err != nil {
+c.JSON(400, gin.H{"error": err.Error()})
+return
+}
+result, err := h.FaceBiometric.GetFaceAttributes(c.Request.Context(), req)
+if err != nil {
+c.JSON(502, gin.H{"error": err.Error()})
+return
+}
+c.JSON(200, result)
+}
+
+// ─── SOTA: Video Verification ─────────────────────────────────────────────────
+
+func (h *Handler) HandleVideoVerify(c *gin.Context) {
+var req facebiometric.VideoVerifyRequest
+if err := c.ShouldBindJSON(&req); err != nil {
+c.JSON(400, gin.H{"error": err.Error()})
+return
+}
+result, err := h.FaceBiometric.VideoVerify(c.Request.Context(), req)
+if err != nil {
+c.JSON(502, gin.H{"error": err.Error()})
+return
+}
+c.JSON(200, result)
+}
+
+// ─── SOTA: Bias Audit ─────────────────────────────────────────────────────────
+
+func (h *Handler) HandleBiasReport(c *gin.Context) {
+result, err := h.FaceBiometric.GetBiasReport(c.Request.Context())
+if err != nil {
+c.JSON(502, gin.H{"error": err.Error()})
+return
+}
+c.JSON(200, result)
+}

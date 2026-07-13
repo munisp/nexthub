@@ -252,6 +252,13 @@ func main() {
 		infra.POST("/face/batch-identify", h.HandleFaceBatchIdentify)
 		infra.GET("/face/public-key",      h.HandleFacePublicKey)
 		infra.POST("/face/name-match",     h.HandleNameMatch)
+// SOTA enhancements
+infra.POST("/face/liveness/active",        h.HandleActiveLivenessStart)
+infra.POST("/face/liveness/active/verify", h.HandleActiveLivenessVerify)
+infra.POST("/face/deepfake",               h.HandleDeepfakeDetect)
+infra.POST("/face/attributes",             h.HandleFaceAttributes)
+infra.POST("/face/video-verify",           h.HandleVideoVerify)
+infra.GET("/face/bias-report",             h.HandleBiasReport)
 	}
 	// ── Partner Public API (X-API-Key auth + per-key rate limiting) ──────────
 	// Third-party apps, cameras, and integrators use this route group.
@@ -289,6 +296,12 @@ func main() {
 				h.HandleFaceBatchIdentify)
 			// RS256 public key for verifying signed assertions (public endpoint)
 			partner.GET("/face/public-key", h.HandleFacePublicKey)
+// SOTA partner endpoints
+partner.POST("/face/liveness/active",        h.HandleActiveLivenessStart)
+partner.POST("/face/liveness/active/verify", h.HandleActiveLivenessVerify)
+partner.POST("/face/deepfake",               h.HandleDeepfakeDetect)
+partner.POST("/face/attributes",             h.HandleFaceAttributes)
+partner.POST("/face/video-verify",           h.HandleVideoVerify)
 		}
 	} else {
 		log.Warn("partner_api_disabled", zap.String("reason", "DB or Redis unavailable"))

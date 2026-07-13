@@ -1,12 +1,11 @@
+# ── Core Web Framework ────────────────────────────────────────────────────────
 fastapi==0.111.0
 uvicorn[standard]==0.30.1
-httpx==0.27.0
-redis[asyncio]==5.0.6
-aiokafka==0.11.0
 pydantic==2.7.4
 python-dotenv==1.0.1
+python-multipart==0.0.9
 
-# Face recognition and liveness
+# ── AI/ML — Face Recognition (SOTA ArcFace R100) ─────────────────────────────
 insightface==0.7.3
 # GPU: onnxruntime-gpu replaces onnxruntime when NVIDIA GPU is available.
 # The Dockerfile selects the correct package via build arg USE_GPU.
@@ -15,21 +14,31 @@ opencv-python-headless==4.10.0.84
 numpy==1.26.4
 Pillow==10.3.0
 
-# Anti-spoofing / liveness
-# Silent-Face-Anti-Spoofing model downloaded at build time via download_models.py
+# ── AI/ML — Active Liveness (MediaPipe 478-landmark Face Mesh) ───────────────
+mediapipe==0.10.14
 
-# Vector database — Qdrant client for large-scale 1:N ANN search (HNSW)
+# ── AI/ML — Face Attributes + Emotion (DeepFace) ─────────────────────────────
+deepface==0.0.93
+tf-keras==2.16.0
+
+# ── AI/ML — Image Processing ─────────────────────────────────────────────────
+scikit-image==0.23.2
+scipy==1.13.1
+
+# ── Vector Database (Qdrant HNSW 1:N Identification) ─────────────────────────
 qdrant-client==1.9.1
 
-# Signed payment assertion (JWT RS256)
+# ── Name Matching ─────────────────────────────────────────────────────────────
+jellyfish==1.0.3
+
+# ── Async Infrastructure ──────────────────────────────────────────────────────
+redis[asyncio]==5.0.6
+aiokafka==0.11.0
+httpx==0.27.0
+
+# ── Cryptography (RS256 JWT Signed Assertions) ────────────────────────────────
 PyJWT==2.8.0
 cryptography==42.0.8
 
-# Image quality — scikit-image LBP (replaces O(h×w) pure-Python loop)
-scikit-image==0.23.2
-
-# Name matching — proper Jaro-Winkler + Soundex
-jellyfish==1.0.3
-
-# Metrics / observability
-prometheus-fastapi-instrumentator==6.1.0
+# ── Observability ─────────────────────────────────────────────────────────────
+prometheus-client==0.20.0

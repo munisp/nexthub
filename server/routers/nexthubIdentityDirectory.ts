@@ -14,6 +14,7 @@
 import { z } from "zod/v4";
 import { createHash, randomBytes } from "node:crypto";
 import { router, protectedProcedure, hubOperatorProcedure } from "../_core/trpc";
+import { TRPCError } from "@trpc/server";
 import { cache, TTL } from "../cache";
 import { logger } from "../logger";
 import { publishKafkaEvent, NEXTHUB_KAFKA_TOPICS } from "../kafka/nexthubKafkaProducer";
@@ -23,12 +24,17 @@ import {
   faceVerifyLogs, faceLivenessLogs, faceEnrollments, faceIdentifyLogs,
   facePartners, facePartnerApiKeys, facePartnerUsageLogs,
   faceBatchIdentifyLogs, facePaymentAssertions, faceBiometricPublicKeys,
+  faceActiveLivenessSessions, faceDeepfakeLogs, faceAttributeLogs,
+  faceVideoVerifyLogs, faceBiasAuditSnapshots,
 } from "../../drizzle/nexthub_schema";
 import {
   verifyFaceViaMiddleware, checkFaceLivenessViaMiddleware,
   assessFaceQualityViaMiddleware, enrollFaceViaMiddleware,
   identifyFaceViaMiddleware, matchNameViaMiddleware,
   batchIdentifyFacesViaMiddleware, getFacePublicKeyViaMiddleware,
+  startActiveLivenessViaMiddleware, verifyActiveLivenessViaMiddleware,
+  detectDeepfakeViaMiddleware, getFaceAttributesViaMiddleware,
+  videoVerifyViaMiddleware, getBiasReportViaMiddleware,
 } from "../middlewareBridge";
 import { eq, desc, and } from "drizzle-orm";
 
@@ -1061,4 +1067,153 @@ export const nexthubIdentityDirectoryRouter = router({
       return { success: true };
     }),
 
+
+  // ─── SOTA: Active Liveness ─────────────────────────────────────────────────
+
+  startActiveLiveness: protectedProcedure
+    .input(z.object({
+      challenge_types: z.array(z.string()).optional(),
+      tenant_id:       z.string().optional(),
+    }))
+    .mutation(async ({ input }) => {
+      const result = await startActiveLivenessViaMiddleware(input.challenge_types, input.tenant_id);
+      if (!result) throw new TRPCError({ code: "BAD_GATEWAY", message: "Active liveness service unavailable" });
+      return result;
+    }),
+
+  verifyActiveLiveness: protectedProcedure
+    .input(z.object({
+      session_id:  z.string(),
+      frames_b64:  z.array(z.string()),
+      tenant_id:   z.string().optional(),
+    }))
+    .mutation(async ({ input }) => {
+      const result = await verifyActiveLivenessViaMiddleware(input.session_id, input.frames_b64, input.tenant_id);
+      if (!result) throw new TRPCError({ code: "BAD_GATEWAY", message: "Active liveness verification failed" });
+      await db.insert(faceActiveLivenessSessions).values({
+        sessionId:      input.session_id,
+        challengeType:  result.challenge_type,
+        nonce:          input.session_id,
+        tenantId:       input.tenant_id ?? null,
+        passed:         result.passed,
+        confidence:     result.confidence,
+        framesAnalyzed: result.frames_analyzed,
+        failureReason:  result.failure_reason ?? null,
+        expiresAt:      new Date(Date.now() + 5 * 60 * 1000),
+        verifiedAt:     new Date(),
+      }).onConflictDoUpdate({ target: faceActiveLivenessSessions.sessionId, set: {
+        passed: result.passed, confidence: result.confidence,
+        framesAnalyzed: result.frames_analyzed, verifiedAt: new Date(),
+      }});
+      return result;
+    }),
+
+  // ─── SOTA: Deepfake Detection ───────────────────────────────────────────────
+
+  detectDeepfake: protectedProcedure
+    .input(z.object({
+      image_b64: z.string(),
+      tenant_id: z.string().optional(),
+      context:   z.string().optional(),
+    }))
+    .mutation(async ({ input }) => {
+      const result = await detectDeepfakeViaMiddleware(input.image_b64, input.tenant_id, input.context);
+      if (!result) throw new TRPCError({ code: "BAD_GATEWAY", message: "Deepfake detection service unavailable" });
+      const requestId = crypto.randomUUID();
+      await db.insert(faceDeepfakeLogs).values({
+        requestId,
+        tenantId:         input.tenant_id ?? null,
+        isDeepfake:       result.is_deepfake,
+        deepfakeScore:    result.deepfake_score,
+        attackType:       result.attack_type ?? null,
+        dctArtifactScore: result.dct_artifact_score,
+        consistencyScore: result.consistency_score,
+        confidence:       result.confidence,
+        context:          input.context ?? null,
+      });
+      return result;
+    }),
+
+  // ─── SOTA: Face Attributes ──────────────────────────────────────────────────
+
+  getFaceAttributes: protectedProcedure
+    .input(z.object({
+      image_b64: z.string(),
+      actions:   z.array(z.string()).optional(),
+      tenant_id: z.string().optional(),
+    }))
+    .mutation(async ({ input }) => {
+      const result = await getFaceAttributesViaMiddleware(input.image_b64, input.actions, input.tenant_id);
+      if (!result) throw new TRPCError({ code: "BAD_GATEWAY", message: "Face attributes service unavailable" });
+      const requestId = crypto.randomUUID();
+      await db.insert(faceAttributeLogs).values({
+        requestId,
+        tenantId:         input.tenant_id ?? null,
+        ageEstimate:      result.age_estimate ?? null,
+        ageBracket:       result.age_bracket ?? null,
+        gender:           result.gender ?? null,
+        genderConfidence: result.gender_confidence ?? null,
+        emotion:          result.emotion ?? null,
+        poseYaw:          result.pose_yaw,
+        posePitch:        result.pose_pitch,
+        poseRoll:         result.pose_roll,
+        occlusionRegions: result.occlusion_regions ?? null,
+      });
+      return result;
+    }),
+
+  // ─── SOTA: Video Verification ───────────────────────────────────────────────
+
+  videoVerify: protectedProcedure
+    .input(z.object({
+      frames_b64:         z.array(z.string()),
+      reference_image_b64: z.string(),
+      subject_id:         z.string().optional(),
+      require_liveness:   z.boolean().optional(),
+      context:            z.string().optional(),
+      tenant_id:          z.string().optional(),
+    }))
+    .mutation(async ({ input }) => {
+      const result = await videoVerifyViaMiddleware(
+        input.frames_b64, input.reference_image_b64,
+        input.subject_id, input.require_liveness, input.context
+      );
+      if (!result) throw new TRPCError({ code: "BAD_GATEWAY", message: "Video verification service unavailable" });
+      const requestId = crypto.randomUUID();
+      await db.insert(faceVideoVerifyLogs).values({
+        requestId,
+        subjectId:           input.subject_id ?? null,
+        tenantId:            input.tenant_id ?? null,
+        verified:            result.verified,
+        meanSimilarity:      result.mean_similarity,
+        minSimilarity:       result.min_similarity,
+        maxSimilarity:       result.max_similarity,
+        framesAnalyzed:      result.frames_analyzed,
+        framesPassed:        result.frames_passed,
+        temporalConsistency: result.temporal_consistency,
+        livenessPassed:      result.liveness_passed ?? null,
+        processingMs:        result.processing_ms,
+        context:             input.context ?? null,
+      });
+      return result;
+    }),
+
+  // ─── SOTA: Bias Audit ───────────────────────────────────────────────────────
+
+  getBiasReport: protectedProcedure
+    .query(async () => {
+      const result = await getBiasReportViaMiddleware();
+      if (!result) throw new TRPCError({ code: "BAD_GATEWAY", message: "Bias audit service unavailable" });
+      const snapshotId = crypto.randomUUID();
+      await db.insert(faceBiasAuditSnapshots).values({
+        snapshotId,
+        generatedAt:     new Date(result.generated_at),
+        windowSecs:      result.window_secs,
+        totalOperations: result.total_operations,
+        groups:          result.groups,
+        alerts:          result.alerts,
+        summary:         result.summary,
+      });
+      return result;
+    }),
 });

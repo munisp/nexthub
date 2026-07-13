@@ -1749,3 +1749,107 @@ export const faceBiometricPublicKeys = pgTable("face_biometric_public_keys", {
   activeIdx:      index("fbpk_active_idx").on(t.isActive),
   fingerprintIdx: uniqueIndex("fbpk_fingerprint_idx").on(t.fingerprint),
 }));
+
+// ─── SOTA Face Biometric: Active Liveness Sessions ───────────────────────────
+export const faceActiveLivenessSessions = pgTable("face_active_liveness_sessions", (t) => ({
+  id:            serial("id").primaryKey(),
+  sessionId:     varchar("session_id", { length: 64 }).notNull().unique(),
+  challengeType: text("challenge_type").notNull(),
+  nonce:         varchar("nonce", { length: 128 }).notNull(),
+  tenantId:      varchar("tenant_id", { length: 64 }),
+  passed:        boolean("passed"),
+  confidence:    real("confidence"),
+  framesAnalyzed: integer("frames_analyzed"),
+  failureReason: text("failure_reason"),
+  expiresAt:     timestamp("expires_at", { withTimezone: true }).notNull(),
+  createdAt:     timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  verifiedAt:    timestamp("verified_at", { withTimezone: true }),
+}), (t) => ({
+  sessionIdx:  uniqueIndex("fals_session_idx").on(t.sessionId),
+  tenantIdx:   index("fals_tenant_idx").on(t.tenantId),
+  createdIdx:  index("fals_created_idx").on(t.createdAt),
+}));
+
+// ─── SOTA Face Biometric: Deepfake Detection Logs ────────────────────────────
+export const faceDeepfakeLogs = pgTable("face_deepfake_logs", (t) => ({
+  id:               serial("id").primaryKey(),
+  requestId:        varchar("request_id", { length: 64 }).notNull().unique(),
+  tenantId:         varchar("tenant_id", { length: 64 }),
+  partnerId:        varchar("partner_id", { length: 64 }),
+  isDeepfake:       boolean("is_deepfake").notNull(),
+  deepfakeScore:    real("deepfake_score").notNull(),
+  attackType:       text("attack_type"),
+  dctArtifactScore: real("dct_artifact_score"),
+  consistencyScore: real("consistency_score"),
+  confidence:       real("confidence").notNull(),
+  context:          text("context"),
+  createdAt:        timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+}), (t) => ({
+  requestIdx:  uniqueIndex("fddl_request_idx").on(t.requestId),
+  tenantIdx:   index("fddl_tenant_idx").on(t.tenantId),
+  deepfakeIdx: index("fddl_deepfake_idx").on(t.isDeepfake),
+  createdIdx:  index("fddl_created_idx").on(t.createdAt),
+}));
+
+// ─── SOTA Face Biometric: Attribute Analysis Logs ────────────────────────────
+export const faceAttributeLogs = pgTable("face_attribute_logs", (t) => ({
+  id:                serial("id").primaryKey(),
+  requestId:         varchar("request_id", { length: 64 }).notNull().unique(),
+  tenantId:          varchar("tenant_id", { length: 64 }),
+  partnerId:         varchar("partner_id", { length: 64 }),
+  ageEstimate:       real("age_estimate"),
+  ageBracket:        text("age_bracket"),
+  gender:            text("gender"),
+  genderConfidence:  real("gender_confidence"),
+  emotion:           text("emotion"),
+  poseYaw:           real("pose_yaw"),
+  posePitch:         real("pose_pitch"),
+  poseRoll:          real("pose_roll"),
+  occlusionRegions:  jsonb("occlusion_regions"),
+  createdAt:         timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+}), (t) => ({
+  requestIdx: uniqueIndex("fal_request_idx").on(t.requestId),
+  tenantIdx:  index("fal_tenant_idx").on(t.tenantId),
+  createdIdx: index("fal_created_idx").on(t.createdAt),
+}));
+
+// ─── SOTA Face Biometric: Video Verification Logs ────────────────────────────
+export const faceVideoVerifyLogs = pgTable("face_video_verify_logs", (t) => ({
+  id:                  serial("id").primaryKey(),
+  requestId:           varchar("request_id", { length: 64 }).notNull().unique(),
+  subjectId:           varchar("subject_id", { length: 64 }),
+  tenantId:            varchar("tenant_id", { length: 64 }),
+  partnerId:           varchar("partner_id", { length: 64 }),
+  verified:            boolean("verified").notNull(),
+  meanSimilarity:      real("mean_similarity").notNull(),
+  minSimilarity:       real("min_similarity"),
+  maxSimilarity:       real("max_similarity"),
+  framesAnalyzed:      integer("frames_analyzed").notNull(),
+  framesPassed:        integer("frames_passed").notNull(),
+  temporalConsistency: real("temporal_consistency"),
+  livenessPassed:      boolean("liveness_passed"),
+  processingMs:        real("processing_ms"),
+  context:             text("context"),
+  createdAt:           timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+}), (t) => ({
+  requestIdx: uniqueIndex("fvvl_request_idx").on(t.requestId),
+  subjectIdx: index("fvvl_subject_idx").on(t.subjectId),
+  tenantIdx:  index("fvvl_tenant_idx").on(t.tenantId),
+  createdIdx: index("fvvl_created_idx").on(t.createdAt),
+}));
+
+// ─── SOTA Face Biometric: Bias Audit Snapshots ───────────────────────────────
+export const faceBiasAuditSnapshots = pgTable("face_bias_audit_snapshots", (t) => ({
+  id:              serial("id").primaryKey(),
+  snapshotId:      varchar("snapshot_id", { length: 64 }).notNull().unique(),
+  generatedAt:     timestamp("generated_at", { withTimezone: true }).notNull(),
+  windowSecs:      integer("window_secs").notNull(),
+  totalOperations: bigint("total_operations", { mode: "number" }).notNull(),
+  groups:          jsonb("groups").notNull(),
+  alerts:          jsonb("alerts").notNull(),
+  summary:         jsonb("summary").notNull(),
+  createdAt:       timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+}), (t) => ({
+  snapshotIdx:  uniqueIndex("fbas_snapshot_idx").on(t.snapshotId),
+  generatedIdx: index("fbas_generated_idx").on(t.generatedAt),
+}));

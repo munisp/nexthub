@@ -16,8 +16,8 @@ hex = "0.4"
 base64 = "0.22"
 ring = "0.17"
 
-# PKCS#11 bindings
-cryptoki = { version = "0.7", features = ["generate-bindings"] }
+# PKCS#11 bindings — upgraded from 0.7 to 0.12 to remove unmaintained paste transitive dep (RUSTSEC-2024-0436)
+cryptoki = { version = "0.12", features = ["generate-bindings"] }
 
 # Serialization
 serde = { version = "1", features = ["derive"] }

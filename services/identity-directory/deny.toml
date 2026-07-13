@@ -1,0 +1,27 @@
+# cargo-deny configuration for identity-directory
+# See: https://embarkstudios.github.io/cargo-deny/
+
+[advisories]
+# Ignore RUSTSEC-2023-0071 (rsa Marvin Attack) — this crate is a transitive
+# dependency of sqlx-mysql (pulled in by sqlx 0.8 even without the mysql feature).
+# The identity-directory service does NOT use RSA operations directly; the rsa
+# crate is never invoked in our code paths. A stable patched release of rsa is
+# not yet available (0.10.x is still RC). Risk is accepted and tracked in
+# NEXTHUB-SEC-001. Revisit when rsa 0.10.0 stable is published.
+ignore = [
+  "RUSTSEC-2023-0071",  # rsa Marvin Attack (no stable fix available)
+  "RUSTSEC-2025-0134",  # rustls-pemfile unmaintained (tonic/rustls transitive dep)
+]
+
+[licenses]
+allow = [
+  "MIT",
+  "Apache-2.0",
+  "Apache-2.0 WITH LLVM-exception",
+  "BSD-2-Clause",
+  "BSD-3-Clause",
+  "ISC",
+  "Unicode-DFS-2016",
+  "OpenSSL",
+  "MPL-2.0",
+]

@@ -1,6 +1,6 @@
 module github.com/munisp/nexthub/services/hsm-adapter
 
-go 1.22
+go 1.25.12
 
 require (
 	github.com/IBM/sarama v1.43.2

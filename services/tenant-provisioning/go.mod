@@ -1,6 +1,6 @@
 module github.com/munisp/nexthub/services/tenant-provisioning
 
-go 1.22
+go 1.25.12
 
 require (
 	github.com/confluentinc/confluent-kafka-go/v2 v2.4.0

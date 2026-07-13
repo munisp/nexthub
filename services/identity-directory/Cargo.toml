@@ -13,19 +13,19 @@ path = "src/main.rs"
 tokio = { version = "1.38", features = ["full"] }
 
 # HTTP server
-axum = { version = "0.7", features = ["json", "macros"] }
-tower = { version = "0.4", features = ["full"] }
-tower-http = { version = "0.5", features = ["cors", "compression-gzip", "trace"] }
+axum = { version = "0.8", features = ["json", "macros"] }
+tower = { version = "0.5", features = ["full"] }
+tower-http = { version = "0.6", features = ["cors", "compression-gzip", "trace"] }
 
 # gRPC
-tonic = { version = "0.11", features = ["tls"] }
-prost = "0.12"
+tonic = { version = "0.12", features = ["tls"] }
+prost = "0.13"
 
-# Database
-sqlx = { version = "0.7", features = ["runtime-tokio-rustls", "postgres", "uuid", "chrono", "json"] }
+# Database — upgraded from 0.7 to fix RUSTSEC-2024-0363 (binary protocol misinterpretation)
+sqlx = { version = "0.8", features = ["runtime-tokio-rustls", "postgres", "uuid", "chrono", "json"] }
 
 # Redis
-redis = { version = "0.25", features = ["tokio-comp", "connection-manager"] }
+redis = { version = "0.27", features = ["tokio-comp", "connection-manager"] }
 
 # Kafka
 rdkafka = { version = "0.36", features = ["cmake-build", "ssl"] }
@@ -57,4 +57,5 @@ anyhow = "1"
 thiserror = "1"
 
 [build-dependencies]
-tonic-build = "0.11"
+tonic-build = "0.12"
+

@@ -378,6 +378,16 @@ mlScorerUrl: process.env.ML_SCORER_URL ?? "http://dispute-ml-scorer:8230",
   faceVerifyThreshold:   parseFloat(process.env.FACE_VERIFY_THRESHOLD   ?? '0.40'),
   faceLivenessThreshold: parseFloat(process.env.FACE_LIVENESS_THRESHOLD ?? '0.60'),
   faceQualityMinScore:   parseFloat(process.env.FACE_QUALITY_MIN_SCORE  ?? '0.50'),
+  // ─── NINAuth / NIMC Integration (OIDC + Direct KYC + Face Match) ──────────────
+  ninAuthBaseUrl:        process.env.NINAUTH_BASE_URL          ?? 'https://ninauth.nimc.gov.ng',
+  ninAuthClientId:       process.env.NINAUTH_CLIENT_ID         ?? '',
+  ninAuthClientSecret:   process.env.NINAUTH_CLIENT_SECRET     ?? '',
+  ninAuthRedirectUri:    process.env.NINAUTH_REDIRECT_URI      ?? 'http://localhost:3000/api/ninauth/callback',
+  nimcApiUrl:            process.env.NIMC_API_URL              ?? 'https://api.nimc.gov.ng/v1',
+  nimcApiKey:            process.env.NIMC_API_KEY              ?? '',
+  ninAuthJwksUri:        process.env.NINAUTH_JWKS_URI          ?? 'https://ninauth.nimc.gov.ng/.well-known/jwks.json',
+  ninAuthIssuer:         process.env.NINAUTH_ISSUER            ?? 'https://ninauth.nimc.gov.ng',
+  biasBiometricAuditUrl: process.env.BIAS_AUDIT_SERVICE_URL   ?? 'http://face-bias-audit:8230',
 };
 
 // Lowercase alias for convenience — use `env` in new code

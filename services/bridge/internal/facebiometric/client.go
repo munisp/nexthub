@@ -501,3 +501,115 @@ return fmt.Errorf("face-biometric service error %d: %s", resp.StatusCode, string
 }
 return json.Unmarshal(raw, out)
 }
+
+// ─── NINAuth typed methods ────────────────────────────────────────────────────
+
+// NINAuthInitRequest / Result
+type NINAuthInitRequest struct {
+State        string   `json:"state"`
+CodeVerifier string   `json:"code_verifier"`
+Nonce        string   `json:"nonce,omitempty"`
+Scopes       []string `json:"scopes,omitempty"`
+}
+type NINAuthInitResult struct {
+AuthorizationURL string `json:"authorization_url"`
+State            string `json:"state"`
+CodeChallenge    string `json:"code_challenge"`
+}
+
+// NINAuthCallbackRequest / Result
+type NINAuthCallbackRequest struct {
+Code         string `json:"code"`
+CodeVerifier string `json:"code_verifier"`
+State        string `json:"state"`
+}
+type NINAuthTokenResult struct {
+AccessToken   string                 `json:"access_token"`
+IDToken       string                 `json:"id_token"`
+TokenType     string                 `json:"token_type"`
+ExpiresIn     int                    `json:"expires_in"`
+NINClaims     map[string]interface{} `json:"nin_claims"`
+FacePhotoB64  string                 `json:"face_photo_b64,omitempty"`
+}
+
+// NINVerifyRequest / Result
+type NINVerifyRequest struct {
+NIN         string `json:"nin"`
+FirstName   string `json:"first_name"`
+LastName    string `json:"last_name"`
+DateOfBirth string `json:"date_of_birth,omitempty"`
+}
+type NINVerifyResult struct {
+NIN         string            `json:"nin"`
+MatchType   string            `json:"match_type"`
+FirstName   string            `json:"first_name"`
+LastName    string            `json:"last_name"`
+DateOfBirth string            `json:"date_of_birth"`
+Gender      string            `json:"gender"`
+Verified    bool              `json:"verified"`
+FieldResults map[string]string `json:"field_results"`
+}
+
+// NINFaceMatchRequest / Result
+type NINFaceMatchRequest struct {
+NIN           string `json:"nin"`
+LiveImageB64  string `json:"live_image_b64"`
+AccessToken   string `json:"access_token,omitempty"`
+CheckLiveness bool   `json:"check_liveness"`
+Context       string `json:"context,omitempty"`
+}
+type NINFaceMatchResult struct {
+NIN            string  `json:"nin"`
+Verified       bool    `json:"verified"`
+Similarity     float64 `json:"similarity"`
+LivenessPassed bool    `json:"liveness_passed"`
+LivenessScore  float64 `json:"liveness_score"`
+MatchType      string  `json:"match_type"`
+NINName        string  `json:"nin_name,omitempty"`
+NINDob         string  `json:"nin_dob,omitempty"`
+NINGender      string  `json:"nin_gender,omitempty"`
+AssertionJWT   string  `json:"assertion_jwt,omitempty"`
+Error          string  `json:"error,omitempty"`
+}
+
+// NINVCVerifyRequest / Result
+type NINVCVerifyRequest struct {
+VCJWT string `json:"vc_jwt"`
+}
+type NINVCVerifyResult struct {
+Valid       bool                   `json:"valid"`
+Issuer      string                 `json:"issuer,omitempty"`
+SubjectNIN  string                 `json:"subject_nin,omitempty"`
+Claims      map[string]interface{} `json:"claims"`
+Error       string                 `json:"error,omitempty"`
+}
+
+// NINAuthInit generates the NINAuth OIDC authorization URL with PKCE.
+func (c *Client) NINAuthInit(ctx context.Context, req NINAuthInitRequest) (*NINAuthInitResult, error) {
+var out NINAuthInitResult
+return &out, c.post(ctx, "/v1/ninauth/init", req, &out)
+}
+
+// NINAuthCallback exchanges the authorization code for tokens.
+func (c *Client) NINAuthCallback(ctx context.Context, req NINAuthCallbackRequest) (*NINAuthTokenResult, error) {
+var out NINAuthTokenResult
+return &out, c.post(ctx, "/v1/ninauth/callback", req, &out)
+}
+
+// NINVerify verifies a NIN against the NIMC database.
+func (c *Client) NINVerify(ctx context.Context, req NINVerifyRequest) (*NINVerifyResult, error) {
+var out NINVerifyResult
+return &out, c.post(ctx, "/v1/ninauth/verify-nin", req, &out)
+}
+
+// NINFaceMatch fetches the NIN photo and runs ArcFace 1:1 + liveness.
+func (c *Client) NINFaceMatch(ctx context.Context, req NINFaceMatchRequest) (*NINFaceMatchResult, error) {
+var out NINFaceMatchResult
+return &out, c.post(ctx, "/v1/ninauth/face-match", req, &out)
+}
+
+// NINVCVerify verifies a W3C Verifiable Credential JWT from NINAuth.
+func (c *Client) NINVCVerify(ctx context.Context, req NINVCVerifyRequest) (*NINVCVerifyResult, error) {
+var out NINVCVerifyResult
+return &out, c.post(ctx, "/v1/ninauth/verify-vc", req, &out)
+}

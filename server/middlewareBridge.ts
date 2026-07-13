@@ -2694,3 +2694,107 @@ export interface BiasReport {
 export async function getBiasReportViaMiddleware(): Promise<BiasReport | null> {
   return safe('GET', '/v1/face/bias-report', undefined);
 }
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// NINAuth / NIMC Integration Bridge Functions
+// ═══════════════════════════════════════════════════════════════════════════════
+
+export interface NINAuthInitResult {
+  authorization_url: string;
+  state: string;
+  code_challenge: string;
+}
+
+export interface NINAuthTokenResult {
+  access_token: string;
+  id_token: string;
+  token_type: string;
+  expires_in: number;
+  nin_claims: Record<string, unknown>;
+  face_photo_b64?: string;
+}
+
+export interface NINVerifyResult {
+  nin: string;
+  match_type: string;
+  first_name: string;
+  last_name: string;
+  date_of_birth: string;
+  gender: string;
+  verified: boolean;
+  field_results: Record<string, string>;
+}
+
+export interface NINFaceMatchResult {
+  nin: string;
+  verified: boolean;
+  similarity: number;
+  liveness_passed: boolean;
+  liveness_score: number;
+  match_type: string;
+  nin_name?: string;
+  nin_dob?: string;
+  nin_gender?: string;
+  assertion_jwt?: string;
+  error?: string;
+}
+
+export interface NINVCVerifyResult {
+  valid: boolean;
+  issuer?: string;
+  subject_nin?: string;
+  claims: Record<string, unknown>;
+  error?: string;
+}
+
+/** Generate NINAuth OIDC authorization URL with PKCE. */
+export async function ninAuthInitViaMiddleware(
+  state: string,
+  codeVerifier: string,
+  scopes?: string[],
+  nonce?: string
+): Promise<NINAuthInitResult | null> {
+  return safe("POST", "/ninauth/init", { state, code_verifier: codeVerifier, scopes, nonce });
+}
+
+/** Exchange NINAuth authorization code for tokens. */
+export async function ninAuthCallbackViaMiddleware(
+  code: string,
+  codeVerifier: string,
+  state: string
+): Promise<NINAuthTokenResult | null> {
+  return safe("POST", "/ninauth/callback", { code, code_verifier: codeVerifier, state });
+}
+
+/** Verify a NIN against the NIMC database (operator KYC). */
+export async function verifyNINViaMiddleware(
+  nin: string,
+  firstName: string,
+  lastName: string,
+  dateOfBirth?: string
+): Promise<NINVerifyResult | null> {
+  return safe("POST", "/ninauth/verify-nin", { nin, first_name: firstName, last_name: lastName, date_of_birth: dateOfBirth });
+}
+
+/** Fetch NIN photo and run ArcFace 1:1 + liveness match. */
+export async function ninFaceMatchViaMiddleware(
+  nin: string,
+  liveImageB64: string,
+  context: string = "government",
+  accessToken?: string
+): Promise<NINFaceMatchResult | null> {
+  return safe("POST", "/ninauth/face-match", {
+    nin,
+    live_image_b64: liveImageB64,
+    context,
+    access_token: accessToken,
+    check_liveness: true,
+  });
+}
+
+/** Verify a W3C Verifiable Credential JWT issued by NINAuth. */
+export async function verifyNINVCViaMiddleware(
+  vcJwt: string
+): Promise<NINVCVerifyResult | null> {
+  return safe("POST", "/ninauth/verify-vc", { vc_jwt: vcJwt });
+}

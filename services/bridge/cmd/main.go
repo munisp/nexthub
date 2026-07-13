@@ -259,7 +259,18 @@ infra.POST("/face/deepfake",               h.HandleDeepfakeDetect)
 infra.POST("/face/attributes",             h.HandleFaceAttributes)
 infra.POST("/face/video-verify",           h.HandleVideoVerify)
 infra.GET("/face/bias-report",             h.HandleBiasReport)
-	}
+
+// NINAuth / NIMC Integration
+// Flow 1: OIDC Consent (citizen-initiated)
+infra.POST("/ninauth/init",         h.HandleNINAuthInit)
+infra.POST("/ninauth/callback",     h.HandleNINAuthCallback)
+// Flow 2: Direct NIN Verification (operator KYC)
+infra.POST("/ninauth/verify-nin",   h.HandleNINVerify)
+// Flow 3: Face + NIN Biometric Match (SOTA ArcFace + liveness)
+infra.POST("/ninauth/face-match",   h.HandleNINFaceMatch)
+// Flow 4: W3C Verifiable Credential verification
+infra.POST("/ninauth/verify-vc",    h.HandleNINVCVerify)
+}
 	// ── Partner Public API (X-API-Key auth + per-key rate limiting) ──────────
 	// Third-party apps, cameras, and integrators use this route group.
 	// Authentication: X-API-Key: nhfb_<key>  or  Authorization: Bearer nhfb_<key>
@@ -302,6 +313,13 @@ partner.POST("/face/liveness/active/verify", h.HandleActiveLivenessVerify)
 partner.POST("/face/deepfake",               h.HandleDeepfakeDetect)
 partner.POST("/face/attributes",             h.HandleFaceAttributes)
 partner.POST("/face/video-verify",           h.HandleVideoVerify)
+			// NINAuth / NIMC partner endpoints
+			partner.POST("/ninauth/face-match",
+				bMiddleware.RequireScope("nin:match"),
+				h.PartnerNINFaceMatch)
+			partner.POST("/ninauth/verify-nin",
+				bMiddleware.RequireScope("nin:verify"),
+				h.PartnerNINVerify)
 		}
 	} else {
 		log.Warn("partner_api_disabled", zap.String("reason", "DB or Redis unavailable"))

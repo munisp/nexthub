@@ -277,6 +277,10 @@ async fn main() -> Result<()> {
         .route("/v1/bias/report",      get(report_handler))
         .route("/v1/bias/report/:op",  get(report_by_op_handler))
         .route("/v1/bias/alert",       get(alert_handler))
+        // NINAuth consent + VC audit trail
+        .route("/v1/ninauth/consent-audit",    post(ingest_ninauth_consent))
+        .route("/v1/ninauth/face-match-audit", post(ingest_nin_face_match_audit))
+        .route("/v1/ninauth/vc-audit",         post(ingest_vc_audit))
         .layer(CorsLayer::permissive())
         .with_state(state);
 
@@ -327,6 +331,68 @@ async fn run_migrations(db: &PgPool) -> Result<()> {
             created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
             resolved_at     TIMESTAMPTZ
         )
+    "#).execute(db).await?;
+
+    // NINAuth consent audit table
+    sqlx::query(r#"
+        CREATE TABLE IF NOT EXISTS ninauth_consent_audit (
+            id              UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+            event_type      TEXT        NOT NULL,
+            nin_hash        TEXT        NOT NULL,
+            partner_id      TEXT,
+            scopes          TEXT[]      NOT NULL DEFAULT '{}',
+            purpose         TEXT,
+            ip_address      TEXT,
+            user_agent      TEXT,
+            session_id      TEXT,
+            recorded_at     TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        )
+    "#).execute(db).await?;
+
+    sqlx::query(r#"
+        CREATE INDEX IF NOT EXISTS idx_ninauth_consent_nin_hash
+        ON ninauth_consent_audit (nin_hash, recorded_at DESC)
+    "#).execute(db).await?;
+
+    // NINAuth face-match audit table
+    sqlx::query(r#"
+        CREATE TABLE IF NOT EXISTS ninauth_face_match_audit (
+            id                  UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+            nin_prefix          TEXT        NOT NULL,
+            verified            BOOLEAN     NOT NULL,
+            similarity          FLOAT8      NOT NULL,
+            liveness_passed     BOOLEAN     NOT NULL,
+            liveness_score      FLOAT8      NOT NULL,
+            match_type          TEXT        NOT NULL,
+            context             TEXT        NOT NULL,
+            partner_id          TEXT,
+            assertion_jwt_id    TEXT,
+            recorded_at         TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        )
+    "#).execute(db).await?;
+
+    sqlx::query(r#"
+        CREATE INDEX IF NOT EXISTS idx_ninauth_face_match_partner
+        ON ninauth_face_match_audit (partner_id, recorded_at DESC)
+    "#).execute(db).await?;
+
+    // W3C Verifiable Credential audit table
+    sqlx::query(r#"
+        CREATE TABLE IF NOT EXISTS ninauth_vc_audit (
+            id                  UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+            vc_id               TEXT        NOT NULL,
+            issuer              TEXT        NOT NULL,
+            subject_nin_hash    TEXT        NOT NULL,
+            valid               BOOLEAN     NOT NULL,
+            partner_id          TEXT,
+            error               TEXT,
+            recorded_at         TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        )
+    "#).execute(db).await?;
+
+    sqlx::query(r#"
+        CREATE INDEX IF NOT EXISTS idx_ninauth_vc_subject
+        ON ninauth_vc_audit (subject_nin_hash, recorded_at DESC)
     "#).execute(db).await?;
 
     info!("db_migrations_complete");
@@ -623,4 +689,270 @@ fn build_report(groups: Vec<GroupStats>, threshold: f64, window_secs: u64) -> Bi
             demographic_parity_gap:   (dp_gap * 10000.0).round() / 10000.0,
         },
     }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// NINAuth Consent Audit Trail & Verifiable Credential Storage
+// ═══════════════════════════════════════════════════════════════════════════════
+//
+// These endpoints receive events from the Go bridge and store them in PostgreSQL
+// for NDPR-compliant audit and regulatory reporting.
+
+/// NINAuth consent event ingested from the Go bridge.
+#[derive(Debug, Deserialize, Serialize, Clone)]
+pub struct NINAuthConsentEvent {
+    pub event_type:   String,          // "NINAUTH_CONSENT_GRANTED" | "NINAUTH_CONSENT_REVOKED"
+    pub nin_hash:     String,          // SHA-256 of NIN — never store raw NIN
+    pub partner_id:   Option<String>,
+    pub scopes:       Vec<String>,
+    pub purpose:      Option<String>,
+    pub ip_address:   Option<String>,
+    pub user_agent:   Option<String>,
+    pub session_id:   Option<String>,
+}
+
+/// NIN face-match audit event.
+#[derive(Debug, Deserialize, Serialize, Clone)]
+pub struct NINFaceMatchAuditEvent {
+    pub nin_prefix:      String,       // first 4 digits + "*******"
+    pub verified:        bool,
+    pub similarity:      f64,
+    pub liveness_passed: bool,
+    pub liveness_score:  f64,
+    pub match_type:      String,       // "face_match" | "nin_verify" | "vc_verify"
+    pub context:         String,       // "government" | "payment" | "border" | "event"
+    pub partner_id:      Option<String>,
+    pub assertion_jwt_id: Option<String>,
+}
+
+/// W3C Verifiable Credential audit record.
+#[derive(Debug, Deserialize, Serialize, Clone)]
+pub struct VCVerifyAuditEvent {
+    pub vc_id:       String,
+    pub issuer:      String,
+    pub subject_nin_hash: String,
+    pub valid:       bool,
+    pub verified_at: String,
+    pub partner_id:  Option<String>,
+    pub error:       Option<String>,
+}
+
+/// Response for audit ingest endpoints.
+#[derive(Serialize)]
+struct AuditIngestResponse {
+    audit_id:    String,
+    recorded_at: String,
+    status:      String,
+}
+
+/// Ingest a NINAuth consent event for NDPR audit.
+///
+/// POST /v1/ninauth/consent-audit
+async fn ingest_ninauth_consent(
+    State(state): State<Arc<AppState>>,
+    Json(event): Json<NINAuthConsentEvent>,
+) -> impl IntoResponse {
+    let audit_id = Uuid::new_v4().to_string();
+    let now = Utc::now().to_rfc3339();
+
+    // Persist to PostgreSQL
+    let result = sqlx::query!(
+        r#"
+        INSERT INTO ninauth_consent_audit
+            (id, event_type, nin_hash, partner_id, scopes, purpose,
+             ip_address, user_agent, session_id, recorded_at)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NOW())
+        "#,
+        audit_id,
+        event.event_type,
+        event.nin_hash,
+        event.partner_id,
+        &event.scopes,
+        event.purpose,
+        event.ip_address,
+        event.user_agent,
+        event.session_id,
+    )
+    .execute(&state.db)
+    .await;
+
+    match result {
+        Ok(_) => {
+            info!(audit_id = %audit_id, event_type = %event.event_type, "ninauth_consent_audited");
+            (
+                StatusCode::CREATED,
+                Json(AuditIngestResponse {
+                    audit_id,
+                    recorded_at: now,
+                    status: "recorded".into(),
+                }),
+            )
+        }
+        Err(e) => {
+            error!(error = %e, "ninauth_consent_audit_db_failed");
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(AuditIngestResponse {
+                    audit_id,
+                    recorded_at: now,
+                    status: format!("error: {e}"),
+                }),
+            )
+        }
+    }
+}
+
+/// Ingest a NIN face-match audit event.
+///
+/// POST /v1/ninauth/face-match-audit
+async fn ingest_nin_face_match_audit(
+    State(state): State<Arc<AppState>>,
+    Json(event): Json<NINFaceMatchAuditEvent>,
+) -> impl IntoResponse {
+    let audit_id = Uuid::new_v4().to_string();
+    let now = Utc::now().to_rfc3339();
+
+    let result = sqlx::query!(
+        r#"
+        INSERT INTO ninauth_face_match_audit
+            (id, nin_prefix, verified, similarity, liveness_passed, liveness_score,
+             match_type, context, partner_id, assertion_jwt_id, recorded_at)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, NOW())
+        "#,
+        audit_id,
+        event.nin_prefix,
+        event.verified,
+        event.similarity,
+        event.liveness_passed,
+        event.liveness_score,
+        event.match_type,
+        event.context,
+        event.partner_id,
+        event.assertion_jwt_id,
+    )
+    .execute(&state.db)
+    .await;
+
+    // Also feed into bias counters if we have demographic context
+    if event.verified || !event.verified {
+        let _ = ingest_bias_event_internal(
+            &state,
+            BiasEvent {
+                operation:    event.match_type.clone(),
+                context:      event.context.clone(),
+                accepted:     event.verified,
+                genuine:      event.verified, // best-effort; ABIS ground truth not available here
+                age_bracket:  "unknown".into(),
+                gender:       "unknown".into(),
+                partner_id:   event.partner_id.clone(),
+            },
+        ).await;
+    }
+
+    match result {
+        Ok(_) => {
+            info!(audit_id = %audit_id, "nin_face_match_audited");
+            (
+                StatusCode::CREATED,
+                Json(AuditIngestResponse {
+                    audit_id,
+                    recorded_at: now,
+                    status: "recorded".into(),
+                }),
+            )
+        }
+        Err(e) => {
+            error!(error = %e, "nin_face_match_audit_db_failed");
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(AuditIngestResponse {
+                    audit_id,
+                    recorded_at: now,
+                    status: format!("error: {e}"),
+                }),
+            )
+        }
+    }
+}
+
+/// Ingest a W3C Verifiable Credential verification audit event.
+///
+/// POST /v1/ninauth/vc-audit
+async fn ingest_vc_audit(
+    State(state): State<Arc<AppState>>,
+    Json(event): Json<VCVerifyAuditEvent>,
+) -> impl IntoResponse {
+    let audit_id = Uuid::new_v4().to_string();
+    let now = Utc::now().to_rfc3339();
+
+    let result = sqlx::query!(
+        r#"
+        INSERT INTO ninauth_vc_audit
+            (id, vc_id, issuer, subject_nin_hash, valid, partner_id, error, recorded_at)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, NOW())
+        "#,
+        audit_id,
+        event.vc_id,
+        event.issuer,
+        event.subject_nin_hash,
+        event.valid,
+        event.partner_id,
+        event.error,
+    )
+    .execute(&state.db)
+    .await;
+
+    match result {
+        Ok(_) => {
+            info!(audit_id = %audit_id, vc_id = %event.vc_id, "vc_audit_recorded");
+            (
+                StatusCode::CREATED,
+                Json(AuditIngestResponse {
+                    audit_id,
+                    recorded_at: now,
+                    status: "recorded".into(),
+                }),
+            )
+        }
+        Err(e) => {
+            error!(error = %e, "vc_audit_db_failed");
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(AuditIngestResponse {
+                    audit_id,
+                    recorded_at: now,
+                    status: format!("error: {e}"),
+                }),
+            )
+        }
+    }
+}
+
+/// Internal helper to feed a bias event without going through HTTP.
+async fn ingest_bias_event_internal(state: &Arc<AppState>, event: BiasEvent) -> Result<()> {
+    let key = format!(
+        "bias:{}:{}:{}:{}",
+        event.operation, event.context, event.age_bracket, event.gender
+    );
+    let mut conn = state.redis.get_multiplexed_async_connection().await?;
+    let _: () = conn.incr(format!("{key}:total"), 1).await?;
+    if !event.accepted && event.genuine {
+        let _: () = conn.incr(format!("{key}:fnmr"), 1).await?;
+    }
+    if event.accepted && !event.genuine {
+        let _: () = conn.incr(format!("{key}:fmr"), 1).await?;
+    }
+    Ok(())
+}
+
+/// Dummy BiasEvent for internal use (mirrors the existing ingest_bias_event handler).
+#[derive(Debug)]
+struct BiasEvent {
+    operation:   String,
+    context:     String,
+    accepted:    bool,
+    genuine:     bool,
+    age_bracket: String,
+    gender:      String,
+    partner_id:  Option<String>,
 }

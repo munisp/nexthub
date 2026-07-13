@@ -1853,3 +1853,98 @@ export const faceBiasAuditSnapshots = pgTable("face_bias_audit_snapshots", (t) =
   snapshotIdx:  uniqueIndex("fbas_snapshot_idx").on(t.snapshotId),
   generatedIdx: index("fbas_generated_idx").on(t.generatedAt),
 }));
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// NINAuth / NIMC Integration Schema
+// ═══════════════════════════════════════════════════════════════════════════════
+
+// Stores the OIDC consent sessions initiated via NINAuth
+export const ninAuthConsentSessions = pgTable("ninauth_consent_sessions", {
+  id:            text("id").primaryKey(),
+  state:         text("state").notNull().unique(),
+  codeVerifier:  text("code_verifier").notNull(),
+  nonce:         text("nonce"),
+  scopes:        text("scopes").array().notNull().default([]),
+  redirectUri:   text("redirect_uri"),
+  userId:        text("user_id"),
+  status:        text("status").notNull().default("pending"), // pending | completed | expired
+  createdAt:     timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  completedAt:   timestamp("completed_at", { withTimezone: true }),
+  expiresAt:     timestamp("expires_at", { withTimezone: true }),
+}, (t) => ({
+  stateIdx:  uniqueIndex("ninauth_session_state_idx").on(t.state),
+  userIdx:   index("ninauth_session_user_idx").on(t.userId),
+}));
+
+// Stores verified NIN identity claims received from NINAuth tokens
+export const ninAuthVerifiedIdentities = pgTable("ninauth_verified_identities", {
+  id:            text("id").primaryKey(),
+  ninHash:       text("nin_hash").notNull(),          // SHA-256 of NIN — never store raw NIN
+  firstName:     text("first_name"),
+  lastName:      text("last_name"),
+  middleName:    text("middle_name"),
+  dateOfBirth:   text("date_of_birth"),
+  gender:        text("gender"),
+  phoneHash:     text("phone_hash"),
+  emailHash:     text("email_hash"),
+  stateOfOrigin: text("state_of_origin"),
+  lga:           text("lga"),
+  verifiedAt:    timestamp("verified_at", { withTimezone: true }).defaultNow().notNull(),
+  accessToken:   text("access_token"),               // encrypted at rest
+  idToken:       text("id_token"),
+  tokenExpiresAt: timestamp("token_expires_at", { withTimezone: true }),
+  userId:        text("user_id"),
+  sessionId:     text("session_id"),
+}, (t) => ({
+  ninHashIdx:  index("ninauth_identity_nin_hash_idx").on(t.ninHash),
+  userIdx:     index("ninauth_identity_user_idx").on(t.userId),
+}));
+
+// Stores direct NIN verification results (operator KYC flow)
+export const ninVerificationLogs = pgTable("nin_verification_logs", {
+  id:           text("id").primaryKey(),
+  ninPrefix:    text("nin_prefix").notNull(),         // first 4 digits + "*******"
+  verified:     boolean("verified").notNull(),
+  matchType:    text("match_type"),                   // "exact" | "phonetic" | "partial"
+  fieldResults: jsonb("field_results"),               // per-field match results
+  operatorId:   text("operator_id"),
+  partnerId:    text("partner_id"),
+  requestedAt:  timestamp("requested_at", { withTimezone: true }).defaultNow().notNull(),
+}, (t) => ({
+  partnerIdx: index("nin_verify_partner_idx").on(t.partnerId, t.requestedAt),
+}));
+
+// Stores NIN face-match results (ArcFace + liveness)
+export const ninFaceMatchLogs = pgTable("nin_face_match_logs", {
+  id:              text("id").primaryKey(),
+  ninPrefix:       text("nin_prefix").notNull(),
+  verified:        boolean("verified").notNull(),
+  similarity:      real("similarity").notNull(),
+  livenessPassed:  boolean("liveness_passed").notNull(),
+  livenessScore:   real("liveness_score").notNull(),
+  matchType:       text("match_type").notNull(),
+  context:         text("context").notNull(),         // "government" | "payment" | "border" | "event"
+  assertionJwtId:  text("assertion_jwt_id"),
+  partnerId:       text("partner_id"),
+  userId:          text("user_id"),
+  requestedAt:     timestamp("requested_at", { withTimezone: true }).defaultNow().notNull(),
+}, (t) => ({
+  partnerIdx: index("nin_face_match_partner_idx").on(t.partnerId, t.requestedAt),
+  contextIdx: index("nin_face_match_context_idx").on(t.context),
+}));
+
+// Stores W3C Verifiable Credential verification results
+export const ninVCVerificationLogs = pgTable("nin_vc_verification_logs", {
+  id:              text("id").primaryKey(),
+  vcId:            text("vc_id").notNull(),
+  issuer:          text("issuer"),
+  subjectNinHash:  text("subject_nin_hash"),
+  valid:           boolean("valid").notNull(),
+  claims:          jsonb("claims"),
+  partnerId:       text("partner_id"),
+  error:           text("error"),
+  verifiedAt:      timestamp("verified_at", { withTimezone: true }).defaultNow().notNull(),
+}, (t) => ({
+  vcIdIdx:    index("nin_vc_id_idx").on(t.vcId),
+  subjectIdx: index("nin_vc_subject_idx").on(t.subjectNinHash),
+}));

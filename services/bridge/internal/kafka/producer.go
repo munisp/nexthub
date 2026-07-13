@@ -45,6 +45,13 @@ const (
 	TopicFaceEnrollResult     = "nexthub.face.enroll.result.v1"
 	TopicFaceIdentifyResult   = "nexthub.face.identify.result.v1"
 	TopicFaceFailed           = "nexthub.face.failed.v1"
+	TopicFaceBatchIdentify    = "nexthub.face.batch_identify.result.v1"
+	TopicFacePaymentAssert    = "nexthub.face.payment.assertion.v1"
+	// NINAuth / NIMC integration topics
+	TopicNINAuthConsent       = "nexthub.ninauth.consent.v1"
+	TopicNINAuthKYC           = "nexthub.ninauth.kyc.verified.v1"
+	TopicNINAuthFaceMatch     = "nexthub.ninauth.face_match.result.v1"
+	TopicNINAuthVCVerified    = "nexthub.ninauth.vc.verified.v1"
 )
 
 // Envelope wraps every event with standard metadata.

@@ -94,6 +94,11 @@ export const NEXTHUB_KAFKA_TOPICS = {
   // Face Biometric
   FACE_BATCH_IDENTIFY_RESULT: "nexthub.face.batch.identify.result.v1",
   FACE_PAYMENT_ASSERTION:     "nexthub.face.payment.assertion.v1",
+  // NINAuth / NIMC integration topics
+  NINAUTH_CONSENT:            "nexthub.ninauth.consent.v1",
+  NINAUTH_KYC:                "nexthub.ninauth.kyc.verified.v1",
+  NINAUTH_FACE_MATCH:         "nexthub.ninauth.face.match.v1",
+  NINAUTH_VC_VERIFIED:        "nexthub.ninauth.vc.verified.v1",
 } as const;
 
 // ─── Typed event payloads ─────────────────────────────────────────────────────

@@ -2489,3 +2489,95 @@ export async function getCredentialStatusViaMiddleware(
 ): Promise<CredentialStatusResponse | null> {
   return safe("GET", `/v1/mosip/registration/credential/${requestId}`, { authToken });
 }
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// FACE BIOMETRIC — Next-Generation Facial Recognition + Liveness Detection
+// ═══════════════════════════════════════════════════════════════════════════════
+
+export interface FaceQualityMetrics {
+  blur_score: number; brightness_score: number; contrast_score: number;
+  pose_yaw: number; pose_pitch: number; pose_roll: number;
+  resolution_ok: boolean; face_size_ratio: number; overall_score: number;
+}
+
+export interface FaceVerifyRequest {
+  probe_image_b64: string; reference_image_b64: string;
+  subject_id?: string; tenant_id?: string;
+  require_liveness?: boolean; require_quality?: boolean; min_quality_score?: number;
+}
+export interface FaceVerifyResult {
+  verified: boolean; similarity: number; distance: number; threshold: number;
+  liveness_passed?: boolean; liveness_score?: number;
+  quality_passed?: boolean; quality_metrics?: FaceQualityMetrics;
+  face_count_probe: number; face_count_ref: number;
+  subject_id?: string; image_hash_probe: string;
+  verified_at: string; processing_ms: number; cached: boolean;
+}
+export async function verifyFaceViaMiddleware(req: FaceVerifyRequest): Promise<FaceVerifyResult | null> {
+  return safe('POST', '/v1/face/verify', req);
+}
+
+export interface FaceLivenessRequest {
+  image_b64: string; subject_id?: string; tenant_id?: string;
+}
+export interface FaceLivenessResult {
+  is_live: boolean; spoof_score: number; liveness_score: number;
+  attack_type?: string; face_detected: boolean;
+  subject_id?: string; image_hash: string; checked_at: string;
+  processing_ms: number; cached: boolean;
+}
+export async function checkFaceLivenessViaMiddleware(req: FaceLivenessRequest): Promise<FaceLivenessResult | null> {
+  return safe('POST', '/v1/face/liveness', req);
+}
+
+export interface FaceQualityRequest {
+  image_b64: string; subject_id?: string; tenant_id?: string;
+}
+export interface FaceQualityResult {
+  quality_passed: boolean; metrics: FaceQualityMetrics; face_detected: boolean;
+  subject_id?: string; image_hash: string; assessed_at: string; processing_ms: number;
+}
+export async function assessFaceQualityViaMiddleware(req: FaceQualityRequest): Promise<FaceQualityResult | null> {
+  return safe('POST', '/v1/face/quality', req);
+}
+
+export interface FaceEnrollRequest {
+  image_b64: string; subject_id: string; tenant_id?: string;
+  require_liveness?: boolean; require_quality?: boolean;
+}
+export interface FaceEnrollResult {
+  enrolled: boolean; subject_id: string; embedding_dim: number;
+  liveness_passed?: boolean; quality_passed?: boolean;
+  enrolled_at: string; processing_ms: number;
+}
+export async function enrollFaceViaMiddleware(req: FaceEnrollRequest): Promise<FaceEnrollResult | null> {
+  return safe('POST', '/v1/face/enroll', req);
+}
+
+export interface FaceIdentifyRequest {
+  probe_image_b64: string; candidate_ids: string[];
+  tenant_id?: string; require_liveness?: boolean; top_k?: number;
+}
+export interface FaceIdentifyMatch {
+  subject_id: string; similarity: number; distance: number; verified: boolean;
+}
+export interface FaceIdentifyResult {
+  identified: boolean; top_match_id?: string; top_similarity: number;
+  matches: FaceIdentifyMatch[]; probe_liveness?: boolean; processing_ms: number;
+}
+export async function identifyFaceViaMiddleware(req: FaceIdentifyRequest): Promise<FaceIdentifyResult | null> {
+  return safe('POST', '/v1/face/identify', req);
+}
+
+export interface NameMatchRequest {
+  expected_first?: string; expected_last?: string;
+  actual_first?: string; actual_last?: string;
+  expected_full?: string; actual_full?: string;
+}
+export interface NameMatchResult {
+  match_score: number; first_name_score?: number;
+  last_name_score?: number; full_name_score?: number; matched: boolean;
+}
+export async function matchNameViaMiddleware(req: NameMatchRequest): Promise<NameMatchResult | null> {
+  return safe('POST', '/v1/face/name-match', req);
+}

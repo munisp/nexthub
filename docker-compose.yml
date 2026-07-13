@@ -29,6 +29,7 @@ volumes:
   kafka_data:
   keycloak_data:
   tigerbeetle_data:
+  face_biometric_models:
 
 services:
   # ─── Infrastructure ──────────────────────────────────────────────────────────
@@ -231,6 +232,10 @@ services:
       PERMIFY_URL: http://permify:3476
       LEDGER_URL: http://ledger:8090
       INTERNAL_API_KEY: ${NEXTHUB_INTEGRATION_API_KEY:-dev-integration-key}
+      FACE_BIOMETRIC_URL: http://face-biometric:8220
+      FACE_VERIFY_THRESHOLD: "0.40"
+      FACE_LIVENESS_THRESHOLD: "0.60"
+      FACE_QUALITY_MIN_SCORE: "0.50"
     ports:
       - "8081:8081"
     healthcheck:
@@ -259,6 +264,37 @@ services:
       timeout: 5s
       retries: 5
 
+  face-biometric:
+    build:
+      context: ./services/face-biometric
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    ports:
+      - "8220:8220"
+    environment:
+      REDIS_URL: redis://redis:6379
+      KAFKA_BROKERS: kafka:9092
+      INSIGHTFACE_MODEL: buffalo_l
+      FACE_VERIFY_THRESHOLD: "0.40"
+      LIVENESS_THRESHOLD: "0.60"
+      QUALITY_MIN_SCORE: "0.50"
+      LIVENESS_MODEL_PATH: /app/models/silent_face_anti_spoof.onnx
+      PORT: "8220"
+    volumes:
+      - face_biometric_models:/app/models
+    depends_on:
+      redis:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+    networks: [nexthub]
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:8220/health"]
+      interval: 15s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+
   nexthub:
     build:
       context: .
@@ -272,6 +308,8 @@ services:
         condition: service_healthy
       lakehouse:
         condition: service_healthy
+      face-biometric:
+        condition: service_healthy
     environment:
       DATABASE_URL: postgresql://user:pass@postgres:5432/nexthub_db
       JWT_SECRET: ${JWT_SECRET:-nexthub-dev-secret-32chars-minimum}
@@ -282,6 +320,7 @@ services:
       MIDDLEWARE_INTERNAL_KEY: ${NEXTHUB_INTEGRATION_API_KEY:-dev-integration-key}
       LAKEHOUSE_URL: http://lakehouse:8082
       REDIS_URL: redis://redis:6379
+      FACE_BIOMETRIC_URL: http://face-biometric:8220
     ports:
       - "3001:3001"
       - "50051:50051"

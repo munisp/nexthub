@@ -13,6 +13,7 @@ import (
 	"github.com/munisp/nexthub/bridge/internal/kafka"
 	"github.com/munisp/nexthub/bridge/internal/keycloak"
 	"github.com/munisp/nexthub/bridge/internal/ledger"
+	"github.com/munisp/nexthub/bridge/internal/facebiometric"
 	"github.com/munisp/nexthub/bridge/internal/mosip"
 	"github.com/munisp/nexthub/bridge/internal/permify"
 	"github.com/munisp/nexthub/bridge/internal/workflows"
@@ -20,13 +21,14 @@ import (
 
 // Handler holds all service dependencies.
 type Handler struct {
-	Temporal  client.Client
-	Ledger    *ledger.Client
-	Kafka     *kafka.Producer
-	Permify   *permify.Client
-	Keycloak  *keycloak.Client
-	MOSIP     *mosip.Client
-	Log       *zap.Logger
+	Temporal      client.Client
+	Ledger        *ledger.Client
+	Kafka         *kafka.Producer
+	Permify       *permify.Client
+	Keycloak      *keycloak.Client
+	MOSIP         *mosip.Client
+	FaceBiometric *facebiometric.Client
+	Log           *zap.Logger
 }
 
 // ─── Health ───────────────────────────────────────────────────────────────────

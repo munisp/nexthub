@@ -39,6 +39,12 @@ const (
 	TopicMOSIPG2PVerification = "nexthub.mosip.g2p.verification.v1"
 	TopicMOSIPOTPSent         = "nexthub.mosip.otp.sent.v1"
 	TopicMOSIPRegistration    = "nexthub.mosip.registration.v1"
+	// Face biometric topics
+	TopicFaceVerifyResult     = "nexthub.face.verify.result.v1"
+	TopicFaceLivenessResult   = "nexthub.face.liveness.result.v1"
+	TopicFaceEnrollResult     = "nexthub.face.enroll.result.v1"
+	TopicFaceIdentifyResult   = "nexthub.face.identify.result.v1"
+	TopicFaceFailed           = "nexthub.face.failed.v1"
 )
 
 // Envelope wraps every event with standard metadata.

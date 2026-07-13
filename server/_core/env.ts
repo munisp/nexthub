@@ -373,6 +373,11 @@ mlScorerUrl: process.env.ML_SCORER_URL ?? "http://dispute-ml-scorer:8230",
   mosipRegProcBaseUrl: process.env.MOSIP_REGPROC_BASE_URL ?? 'https://api.sandbox.mosip.net',
   mosipIdRepoBaseUrl: process.env.MOSIP_IDREPO_BASE_URL ?? 'https://api.sandbox.mosip.net',
   mosipCredentialBaseUrl: process.env.MOSIP_CREDENTIAL_BASE_URL ?? 'https://api.sandbox.mosip.net',
+  // ─── Face Biometric sidecar (InsightFace ArcFace + Silent-Face liveness) ────────────────────
+  faceBiometricUrl:      process.env.FACE_BIOMETRIC_URL        ?? 'http://face-biometric:8220',
+  faceVerifyThreshold:   parseFloat(process.env.FACE_VERIFY_THRESHOLD   ?? '0.40'),
+  faceLivenessThreshold: parseFloat(process.env.FACE_LIVENESS_THRESHOLD ?? '0.60'),
+  faceQualityMinScore:   parseFloat(process.env.FACE_QUALITY_MIN_SCORE  ?? '0.50'),
 };
 
 // Lowercase alias for convenience — use `env` in new code

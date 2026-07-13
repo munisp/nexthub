@@ -23,6 +23,7 @@ import (
 	"github.com/munisp/nexthub/bridge/internal/keycloak"
 	"github.com/munisp/nexthub/bridge/internal/ledger"
 	bMiddleware "github.com/munisp/nexthub/bridge/internal/middleware"
+	"github.com/munisp/nexthub/bridge/internal/facebiometric"
 	"github.com/munisp/nexthub/bridge/internal/mosip"
 	"github.com/munisp/nexthub/bridge/internal/permify"
 	temporalWorker "github.com/munisp/nexthub/bridge/internal/temporal"
@@ -76,14 +77,20 @@ func main() {
 		log.Warn("mosip_client_init_failed", zap.Error(mosipErr))
 		mosipClient = nil // non-fatal — MOSIP endpoints will return 503
 	}
+	// ── Face Biometric client ─────────────────────────────────────────────────
+	faceBiometricCfg := facebiometric.ConfigFromEnv()
+	faceBiometricClient := facebiometric.New(faceBiometricCfg)
+	log.Info("face_biometric_client_configured", zap.String("url", faceBiometricCfg.BaseURL))
+
 	// ── HTTP handlers ─────────────────────────────────────────────────────────
 	h := &handlers.Handler{
-		Ledger:   ledgerClient,
-		Kafka:    kafkaProducer,
-		Permify:  permifyClient,
-		Keycloak: keycloakClient,
-		MOSIP:    mosipClient,
-		Log:      log,
+		Ledger:        ledgerClient,
+		Kafka:         kafkaProducer,
+		Permify:       permifyClient,
+		Keycloak:      keycloakClient,
+		MOSIP:         mosipClient,
+		FaceBiometric: faceBiometricClient,
+		Log:           log,
 	}
 	if worker != nil {
 		h.Temporal = worker.Client
@@ -219,6 +226,14 @@ func main() {
 		infra.POST("/mosip/registration/vid",                   h.HandleVIDGenerate)
 		infra.POST("/mosip/registration/credential",            h.HandleCredentialRequest)
 		infra.GET("/mosip/registration/credential/:requestId",  h.HandleCredentialStatus)
+		// Face Biometric — next-generation facial recognition + liveness
+		infra.POST("/face/verify",     h.HandleFaceVerify)
+		infra.POST("/face/liveness",   h.HandleFaceLiveness)
+		infra.POST("/face/quality",    h.HandleFaceQuality)
+		infra.POST("/face/enroll",     h.HandleFaceEnroll)
+		infra.POST("/face/identify",   h.HandleFaceIdentify)
+		infra.POST("/face/name-match", h.HandleNameMatch)
+
 		// Kafka direct
 		infra.POST("/kafka/publish",                h.KafkaPublish)
 		// Temporal proxy

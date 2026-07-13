@@ -1,0 +1,21 @@
+fastapi==0.111.0
+uvicorn[standard]==0.30.1
+httpx==0.27.0
+redis[asyncio]==5.0.6
+aiokafka==0.11.0
+pydantic==2.7.4
+python-dotenv==1.0.1
+# Face recognition and liveness
+insightface==0.7.3
+onnxruntime==1.18.1
+opencv-python-headless==4.10.0.84
+numpy==1.26.4
+Pillow==10.3.0
+# Anti-spoofing / liveness
+# Silent-Face-Anti-Spoofing model loaded via ONNX (bundled weights)
+# Image quality
+scikit-image==0.23.2
+# Name matching — proper Jaro-Winkler
+jellyfish==1.0.3
+# Metrics / observability
+prometheus-fastapi-instrumentator==6.1.0

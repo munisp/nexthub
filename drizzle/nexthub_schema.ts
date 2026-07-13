@@ -1540,3 +1540,101 @@ export const mosipCredentialRequests = pgTable("mosip_credential_requests", {
   requestIdx:      index("mosip_cred_request_idx").on(t.requestId),
   statusIdx:       index("mosip_cred_status_idx").on(t.status),
 }));
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// FACE BIOMETRIC — Next-Generation Facial Recognition + Liveness Detection
+// ═══════════════════════════════════════════════════════════════════════════════
+
+/**
+ * face_verify_logs — Audit log for all 1:1 face verification requests.
+ * Stores result metadata; raw embeddings are never persisted here.
+ */
+export const faceVerifyLogs = pgTable("face_verify_logs", {
+  id:              serial("id").primaryKey(),
+  subjectId:       varchar("subject_id",  { length: 128 }),
+  tenantId:        varchar("tenant_id",   { length: 64 }),
+  verified:        boolean("verified").notNull(),
+  similarity:      real("similarity").notNull(),
+  distance:        real("distance").notNull(),
+  threshold:       real("threshold").notNull(),
+  livenessPassed:  boolean("liveness_passed"),
+  livenessScore:   real("liveness_score"),
+  qualityPassed:   boolean("quality_passed"),
+  qualityScore:    real("quality_score"),
+  faceCountProbe:  integer("face_count_probe").notNull().default(0),
+  faceCountRef:    integer("face_count_ref").notNull().default(0),
+  imageHashProbe:  varchar("image_hash_probe", { length: 64 }),
+  processingMs:    real("processing_ms"),
+  cached:          boolean("cached").notNull().default(false),
+  verifiedAt:      timestamp("verified_at").notNull().defaultNow(),
+  createdAt:       timestamp("created_at").notNull().defaultNow(),
+}, (t) => ({
+  subjectIdx:  index("fvl_subject_idx").on(t.subjectId),
+  tenantIdx:   index("fvl_tenant_idx").on(t.tenantId),
+  verifiedIdx: index("fvl_verified_idx").on(t.verified),
+  createdIdx:  index("fvl_created_idx").on(t.createdAt),
+}));
+
+/**
+ * face_liveness_logs — Audit log for passive liveness / anti-spoofing checks.
+ */
+export const faceLivenessLogs = pgTable("face_liveness_logs", {
+  id:            serial("id").primaryKey(),
+  subjectId:     varchar("subject_id",  { length: 128 }),
+  tenantId:      varchar("tenant_id",   { length: 64 }),
+  isLive:        boolean("is_live").notNull(),
+  spoofScore:    real("spoof_score").notNull(),
+  livenessScore: real("liveness_score").notNull(),
+  attackType:    varchar("attack_type", { length: 64 }),
+  faceDetected:  boolean("face_detected").notNull().default(false),
+  imageHash:     varchar("image_hash",  { length: 64 }),
+  processingMs:  real("processing_ms"),
+  cached:        boolean("cached").notNull().default(false),
+  checkedAt:     timestamp("checked_at").notNull().defaultNow(),
+  createdAt:     timestamp("created_at").notNull().defaultNow(),
+}, (t) => ({
+  subjectIdx:  index("fll_subject_idx").on(t.subjectId),
+  tenantIdx:   index("fll_tenant_idx").on(t.tenantId),
+  isLiveIdx:   index("fll_is_live_idx").on(t.isLive),
+  createdIdx:  index("fll_created_idx").on(t.createdAt),
+}));
+
+/**
+ * face_enrollments — Tracks enrolled face subjects.
+ * Actual 512-d ArcFace embeddings are stored in Redis (face-biometric sidecar).
+ */
+export const faceEnrollments = pgTable("face_enrollments", {
+  id:            serial("id").primaryKey(),
+  subjectId:     varchar("subject_id",  { length: 128 }).notNull().unique(),
+  tenantId:      varchar("tenant_id",   { length: 64 }),
+  embeddingDim:  integer("embedding_dim").notNull().default(512),
+  livenessPassed: boolean("liveness_passed"),
+  qualityPassed:  boolean("quality_passed"),
+  enrolledAt:    timestamp("enrolled_at").notNull().defaultNow(),
+  updatedAt:     timestamp("updated_at").notNull().defaultNow(),
+  revokedAt:     timestamp("revoked_at"),
+  isActive:      boolean("is_active").notNull().default(true),
+}, (t) => ({
+  subjectIdx:  uniqueIndex("fe_subject_idx").on(t.subjectId),
+  tenantIdx:   index("fe_tenant_idx").on(t.tenantId),
+  activeIdx:   index("fe_active_idx").on(t.isActive),
+}));
+
+/**
+ * face_identify_logs — Audit log for 1:N face identification requests.
+ */
+export const faceIdentifyLogs = pgTable("face_identify_logs", {
+  id:             serial("id").primaryKey(),
+  tenantId:       varchar("tenant_id",     { length: 64 }),
+  identified:     boolean("identified").notNull(),
+  topMatchId:     varchar("top_match_id",  { length: 128 }),
+  topSimilarity:  real("top_similarity").notNull().default(0),
+  candidateCount: integer("candidate_count").notNull().default(0),
+  probeLiveness:  boolean("probe_liveness"),
+  processingMs:   real("processing_ms"),
+  createdAt:      timestamp("created_at").notNull().defaultNow(),
+}, (t) => ({
+  tenantIdx:      index("fil_tenant_idx").on(t.tenantId),
+  identifiedIdx:  index("fil_identified_idx").on(t.identified),
+  createdIdx:     index("fil_created_idx").on(t.createdAt),
+}));

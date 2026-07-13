@@ -2798,3 +2798,38 @@ export async function verifyNINVCViaMiddleware(
 ): Promise<NINVCVerifyResult | null> {
   return safe("POST", "/ninauth/verify-vc", { vc_jwt: vcJwt });
 }
+
+// ─── Photo Fidelity Pipeline Bridge Functions ─────────────────────────────────
+
+export async function assessFidelity(payload: {
+  image_b64: string;
+  context?: string;
+  auto_remediate?: boolean;
+}) {
+  return safe("POST", "/face/fidelity", payload);
+}
+
+export async function getCaptureGuidance(payload: {
+  image_b64: string;
+  context?: string;
+}) {
+  return safe("POST", "/face/capture-guidance", payload);
+}
+
+export async function enrollGated(payload: {
+  image_b64: string;
+  subject_id: string;
+  metadata?: Record<string, unknown>;
+  min_quality?: number;
+  require_icao?: boolean;
+  auto_remediate?: boolean;
+}) {
+  return safe("POST", "/face/enroll-gated", payload);
+}
+
+export async function autoCropFace(payload: {
+  image_b64: string;
+  context?: string;
+}) {
+  return safe("POST", "/face/auto-crop", payload);
+}

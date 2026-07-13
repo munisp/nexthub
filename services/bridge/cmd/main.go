@@ -270,6 +270,11 @@ infra.POST("/ninauth/verify-nin",   h.HandleNINVerify)
 infra.POST("/ninauth/face-match",   h.HandleNINFaceMatch)
 // Flow 4: W3C Verifiable Credential verification
 infra.POST("/ninauth/verify-vc",    h.HandleNINVCVerify)
+// Photo Fidelity Pipeline (ICAO 9303 / ISO 19794-5 / NIST FRVT)
+infra.POST("/face/fidelity",         h.HandleFidelityAssess)
+infra.POST("/face/capture-guidance", h.HandleCaptureGuidance)
+infra.POST("/face/enroll-gated",     h.HandleEnrollGated)
+infra.POST("/face/auto-crop",        h.HandleAutoCrop)
 }
 	// ── Partner Public API (X-API-Key auth + per-key rate limiting) ──────────
 	// Third-party apps, cameras, and integrators use this route group.
@@ -320,6 +325,19 @@ partner.POST("/face/video-verify",           h.HandleVideoVerify)
 			partner.POST("/ninauth/verify-nin",
 				bMiddleware.RequireScope("nin:verify"),
 				h.PartnerNINVerify)
+			// Photo Fidelity Pipeline (partner-accessible)
+			partner.POST("/face/fidelity",
+				bMiddleware.RequireScope("face:quality"),
+				h.HandleFidelityAssess)
+			partner.POST("/face/capture-guidance",
+				bMiddleware.RequireScope("face:quality"),
+				h.HandleCaptureGuidance)
+			partner.POST("/face/enroll-gated",
+				bMiddleware.RequireScope("face:enroll"),
+				h.HandleEnrollGated)
+			partner.POST("/face/auto-crop",
+				bMiddleware.RequireScope("face:quality"),
+				h.HandleAutoCrop)
 		}
 	} else {
 		log.Warn("partner_api_disabled", zap.String("reason", "DB or Redis unavailable"))

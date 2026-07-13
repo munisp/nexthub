@@ -52,6 +52,9 @@ const (
 	TopicNINAuthKYC           = "nexthub.ninauth.kyc.verified.v1"
 	TopicNINAuthFaceMatch     = "nexthub.ninauth.face_match.result.v1"
 	TopicNINAuthVCVerified    = "nexthub.ninauth.vc.verified.v1"
+	// Photo Fidelity Pipeline
+	TopicFaceFidelityAudit    = "nexthub.face.fidelity.audit.v1"
+	TopicFaceEnrollGated      = "nexthub.face.enroll.gated.v1"
 )
 
 // Envelope wraps every event with standard metadata.

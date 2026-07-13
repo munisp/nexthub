@@ -1386,3 +1386,340 @@ async def verify_nin_vc(req: NINVCVerifyRequest):
     except Exception as e:
         return NINVCVerifyResult(valid=False, issuer=None, subject_nin=None,
                                   claims={}, error=str(e))
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# PHOTO FIDELITY PIPELINE — ICAO 9303 / ISO 19794-5 / NIST FRVT
+# Integrates quality_engine.py for standards-compliant enrollment gating
+# ═══════════════════════════════════════════════════════════════════════════════
+from quality_engine import (
+    full_quality_assessment,
+    fidelity_report_to_dict,
+    auto_crop_face,
+    FidelityReport,
+    ICAO_MIN_FACE_WIDTH_PX,
+    ICAO_MIN_INTER_EYE_PX,
+)
+import base64 as _b64
+
+# ── Pydantic Models ────────────────────────────────────────────────────────────
+
+class FidelityRequest(BaseModel):
+    """Request model for the comprehensive photo fidelity assessment endpoint."""
+    image_b64:       str   = Field(..., description="Base64-encoded image (JPEG/PNG/WebP)")
+    auto_remediate:  bool  = Field(True,  description="Apply CLAHE/denoise/sharpen if marginal")
+    return_processed: bool = Field(False, description="Return the remediated image as base64")
+    context:         str   = Field("enrollment", description="enrollment|payment|border|event")
+
+
+class FidelityResponse(BaseModel):
+    """Full ICAO/ISO/NIST fidelity report with optional remediated image."""
+    overall_score:        float
+    enrollment_ready:     bool
+    remediation_applied:  bool
+    sharpness_score:      float
+    brightness_score:     float
+    contrast_score:       float
+    face_size_ratio:      float
+    occlusion_score:      float
+    pose_yaw:             float
+    pose_pitch:           float
+    pose_roll:            float
+    image_width:          int
+    image_height:         int
+    face_width:           int
+    face_height:          int
+    face_detected:        bool
+    multiple_faces:       bool
+    neural_quality_score: Optional[float] = None
+    guidance:             List[str] = []
+    guidance_priority:    str = ""
+    icao:                 Optional[Dict[str, Any]] = None
+    brisque:              Optional[Dict[str, Any]] = None
+    processed_image_b64:  Optional[str] = None
+    error:                Optional[str] = None
+
+
+class EnrollWithFidelityRequest(BaseModel):
+    """Enrollment request that enforces ICAO fidelity gating before storing embedding."""
+    subject_id:       str
+    tenant_id:        str  = "default"
+    image_b64:        str
+    auto_remediate:   bool = True
+    metadata:         Optional[Dict[str, Any]] = None
+    # Minimum quality threshold override (default: 0.70)
+    min_quality:      float = 0.70
+    # Require full ICAO compliance (default: True)
+    require_icao:     bool  = True
+
+
+class EnrollWithFidelityResult(BaseModel):
+    subject_id:       str
+    enrolled:         bool
+    embedding_id:     Optional[str]  = None
+    quality_score:    float          = 0.0
+    icao_compliant:   bool           = False
+    fidelity_report:  Optional[Dict[str, Any]] = None
+    rejection_reason: Optional[str]  = None
+
+
+class CaptureGuidanceRequest(BaseModel):
+    """Lightweight real-time capture guidance — optimised for low-latency camera feedback."""
+    image_b64:  str
+    context:    str = "enrollment"
+
+
+class CaptureGuidanceResponse(BaseModel):
+    """Lightweight response for real-time capture guidance."""
+    overall_score:     float
+    enrollment_ready:  bool
+    guidance_priority: str
+    guidance:          List[str]
+    pose_yaw:          float
+    pose_pitch:        float
+    pose_roll:         float
+    face_detected:     bool
+    icao_failed:       List[str] = []
+    processing_ms:     float     = 0.0
+
+
+# ── Endpoints ─────────────────────────────────────────────────────────────────
+
+@app.post("/v1/face/fidelity", response_model=FidelityResponse)
+async def assess_fidelity(req: FidelityRequest):
+    """
+    Full 5-layer photo fidelity assessment.
+    Returns ICAO 9303, ISO 19794-5, BRISQUE, neural quality, and guided feedback.
+    Optionally returns the auto-remediated image.
+    """
+    t0 = time.perf_counter()
+    img = decode_image(req.image_b64)
+    try:
+        _, faces = get_embedding(img)
+    except HTTPException:
+        faces = []
+
+    report, processed = full_quality_assessment(
+        img, faces,
+        mediapipe_face_mesh=mediapipe_face_mesh,
+        auto_remediate=req.auto_remediate,
+    )
+
+    d = fidelity_report_to_dict(report)
+    d["processing_ms"] = round((time.perf_counter() - t0) * 1000, 2)
+
+    if req.return_processed and report.remediation_applied:
+        _, buf = cv2.imencode(".jpg", processed, [cv2.IMWRITE_JPEG_QUALITY, 95])
+        d["processed_image_b64"] = _b64.b64encode(buf.tobytes()).decode()
+
+    return FidelityResponse(**d)
+
+
+@app.post("/v1/face/capture-guidance", response_model=CaptureGuidanceResponse)
+async def capture_guidance(req: CaptureGuidanceRequest):
+    """
+    Lightweight real-time capture guidance for live camera feeds.
+    Optimised for low latency — skips BRISQUE and neural scoring.
+    Returns actionable operator instructions within ~50ms.
+    """
+    t0 = time.perf_counter()
+    img = decode_image(req.image_b64)
+    try:
+        _, faces = get_embedding(img)
+    except HTTPException:
+        faces = []
+
+    # Fast path: ICAO compliance only (no BRISQUE, no neural scoring)
+    from quality_engine import check_icao_compliance, _laplacian_sharpness, assess_brisque, generate_guidance, BRISQUEResult
+    import cv2 as _cv2
+    gray = _cv2.cvtColor(img, _cv2.COLOR_BGR2GRAY)
+    brightness = float(gray.mean())
+    sharpness_lap = _laplacian_sharpness(gray)
+    icao = check_icao_compliance(img, faces, mediapipe_face_mesh)
+
+    # Minimal BRISQUE (fast)
+    brisque = BRISQUEResult(score=0.0, normalized=1.0)
+
+    yaw = pitch = roll = 0.0
+    if faces:
+        best = max(faces, key=lambda f: (f.bbox[2]-f.bbox[0])*(f.bbox[3]-f.bbox[1]))
+        if hasattr(best, "pose") and best.pose is not None and len(best.pose) >= 3:
+            pitch, yaw, roll = float(best.pose[0]), float(best.pose[1]), float(best.pose[2])
+
+    guidance, priority = generate_guidance(
+        icao, brisque, yaw, pitch, roll, brightness, sharpness_lap, []
+    )
+
+    # Fast overall score
+    sharpness_score = min(1.0, sharpness_lap / 300.0)
+    brightness_score = max(0.0, 1.0 - abs(brightness / 255.0 - 0.5) * 2.0)
+    pose_score = max(0.0, 1.0 - (abs(yaw) / 15.0 + abs(pitch) / 10.0) / 2.0)
+    face_size_score = 0.0
+    if faces:
+        best = max(faces, key=lambda f: (f.bbox[2]-f.bbox[0])*(f.bbox[3]-f.bbox[1]))
+        h, w = img.shape[:2]
+        x1, y1, x2, y2 = [float(v) for v in best.bbox]
+        fsr = ((x2-x1)*(y2-y1)) / (w * h + 1e-6)
+        face_size_score = min(1.0, fsr / 0.25)
+
+    overall = (sharpness_score * 0.30 + pose_score * 0.25 +
+               brightness_score * 0.20 + face_size_score * 0.25)
+
+    ms = round((time.perf_counter() - t0) * 1000, 2)
+    return CaptureGuidanceResponse(
+        overall_score=round(overall, 4),
+        enrollment_ready=overall >= 0.70 and icao.fully_compliant and len(faces) == 1,
+        guidance_priority=priority,
+        guidance=guidance,
+        pose_yaw=round(yaw, 2),
+        pose_pitch=round(pitch, 2),
+        pose_roll=round(roll, 2),
+        face_detected=len(faces) > 0,
+        icao_failed=icao.failed_criteria,
+        processing_ms=ms,
+    )
+
+
+@app.post("/v1/face/enroll-gated", response_model=EnrollWithFidelityResult)
+async def enroll_gated(req: EnrollWithFidelityRequest, bg: BackgroundTasks):
+    """
+    ICAO/ISO-gated enrollment endpoint.
+    Runs the full fidelity pipeline before storing the embedding.
+    Optionally applies auto-remediation before enrollment.
+    Rejects images that do not meet the configured quality threshold.
+    """
+    t0 = time.perf_counter()
+    img = decode_image(req.image_b64)
+    try:
+        emb, faces = get_embedding(img)
+    except HTTPException as e:
+        return EnrollWithFidelityResult(
+            subject_id=req.subject_id,
+            enrolled=False,
+            rejection_reason=f"face_detection_failed: {e.detail}",
+        )
+
+    # Full fidelity assessment with auto-remediation
+    report, processed = full_quality_assessment(
+        img, faces,
+        mediapipe_face_mesh=mediapipe_face_mesh,
+        auto_remediate=req.auto_remediate,
+    )
+
+    # If remediation was applied, re-extract embedding from processed image
+    if report.remediation_applied:
+        try:
+            emb, faces = get_embedding(processed)
+        except HTTPException:
+            pass  # Fall back to original embedding
+
+    fidelity_dict = fidelity_report_to_dict(report)
+
+    # ── Quality Gate ──────────────────────────────────────────────────────────
+    if report.multiple_faces:
+        return EnrollWithFidelityResult(
+            subject_id=req.subject_id, enrolled=False,
+            quality_score=report.overall_score,
+            icao_compliant=report.icao.fully_compliant if report.icao else False,
+            fidelity_report=fidelity_dict,
+            rejection_reason="multiple_faces_detected",
+        )
+
+    if report.overall_score < req.min_quality:
+        return EnrollWithFidelityResult(
+            subject_id=req.subject_id, enrolled=False,
+            quality_score=report.overall_score,
+            icao_compliant=report.icao.fully_compliant if report.icao else False,
+            fidelity_report=fidelity_dict,
+            rejection_reason=f"quality_below_threshold ({report.overall_score:.3f} < {req.min_quality:.3f}): {report.guidance_priority}",
+        )
+
+    if req.require_icao and report.icao and not report.icao.fully_compliant:
+        failed = ", ".join(report.icao.failed_criteria[:3])
+        return EnrollWithFidelityResult(
+            subject_id=req.subject_id, enrolled=False,
+            quality_score=report.overall_score,
+            icao_compliant=False,
+            fidelity_report=fidelity_dict,
+            rejection_reason=f"icao_non_compliant: {failed}",
+        )
+
+    # ── Store Embedding in Qdrant ─────────────────────────────────────────────
+    if qdrant_client is None:
+        return EnrollWithFidelityResult(
+            subject_id=req.subject_id, enrolled=False,
+            rejection_reason="qdrant_unavailable",
+        )
+
+    from qdrant_client.models import PointStruct
+    eid = hashlib.sha256(f"{req.subject_id}:{req.tenant_id}".encode()).hexdigest()[:32]
+    qdrant_client.upsert(QDRANT_COLLECTION, points=[PointStruct(
+        id=int(hashlib.sha256(eid.encode()).hexdigest()[:8], 16),
+        vector=emb.tolist(),
+        payload={
+            "subject_id":    req.subject_id,
+            "tenant_id":     req.tenant_id,
+            "metadata":      req.metadata or {},
+            "quality_score": report.overall_score,
+            "icao_compliant": report.icao.fully_compliant if report.icao else False,
+            "enrolled_at":   datetime.now(timezone.utc).isoformat(),
+        }
+    )])
+
+    if PROM_OK:
+        ENROLLED_G.inc()
+        ENROLL_CTR.labels(result="success").inc()
+
+    result = EnrollWithFidelityResult(
+        subject_id=req.subject_id,
+        enrolled=True,
+        embedding_id=eid,
+        quality_score=round(report.overall_score, 4),
+        icao_compliant=report.icao.fully_compliant if report.icao else False,
+        fidelity_report=fidelity_dict,
+    )
+    bg.add_task(publish, TOPIC_ENROLL, {
+        **result.model_dump(),
+        "processing_ms": round((time.perf_counter() - t0) * 1000, 2),
+    })
+    return result
+
+
+@app.post("/v1/face/auto-crop")
+async def auto_crop_endpoint(req: FidelityRequest):
+    """
+    Auto-crop the image to the face region with ICAO-compliant padding.
+    Returns the cropped, upscaled, and optionally CLAHE-enhanced face image.
+    """
+    img = decode_image(req.image_b64)
+    try:
+        _, faces = get_embedding(img)
+    except HTTPException:
+        faces = []
+
+    if not faces:
+        raise HTTPException(422, "No face detected in image")
+
+    cropped = auto_crop_face(img, faces, padding=0.35)
+    if cropped is None:
+        raise HTTPException(422, "Face crop failed")
+
+    if req.auto_remediate:
+        from quality_engine import apply_clahe, apply_sharpening, _laplacian_sharpness
+        import cv2 as _cv2
+        gray = _cv2.cvtColor(cropped, _cv2.COLOR_BGR2GRAY)
+        brightness = float(gray.mean())
+        if brightness < 40 or brightness > 220:
+            cropped = apply_clahe(cropped)
+        if _laplacian_sharpness(gray) < 150:
+            cropped = apply_sharpening(cropped)
+
+    _, buf = cv2.imencode(".jpg", cropped, [cv2.IMWRITE_JPEG_QUALITY, 95])
+    b64 = _b64.b64encode(buf.tobytes()).decode()
+
+    h, w = cropped.shape[:2]
+    return {
+        "cropped_image_b64": b64,
+        "width": w,
+        "height": h,
+        "icao_min_met": min(w, h) >= ICAO_MIN_FACE_WIDTH_PX,
+    }

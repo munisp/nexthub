@@ -23,7 +23,7 @@ import { dictAliases, identityLookups, biometricVerifications } from "../../driz
 import {
   faceVerifyLogs, faceLivenessLogs, faceEnrollments, faceIdentifyLogs,
   facePartners, facePartnerApiKeys, facePartnerUsageLogs,
-  faceBatchIdentifyLogs, facePaymentAssertions, faceBiometricPublicKeys,
+  faceBatchIdentifyLogs, facePaymentAssertions, faceFidelityAuditLogs, faceCaptureGuidanceLogs, faceBiometricPublicKeys,
   faceActiveLivenessSessions, faceDeepfakeLogs, faceAttributeLogs,
   faceVideoVerifyLogs, faceBiasAuditSnapshots,
   ninAuthConsentSessions, ninAuthVerifiedIdentities,
@@ -41,6 +41,7 @@ import {
   verifyNINViaMiddleware, ninFaceMatchViaMiddleware, verifyNINVCViaMiddleware,
   type NINAuthInitResult, type NINAuthTokenResult,
   type NINVerifyResult, type NINFaceMatchResult, type NINVCVerifyResult,
+  assessFidelity, getCaptureGuidance, enrollGated, autoCropFace,
 } from "../middlewareBridge";
 import { eq, desc, and } from "drizzle-orm";
 
@@ -1448,6 +1449,95 @@ export const nexthubIdentityDirectoryRouter = router({
     .query(async ({ input }) => {
       const q = db.select().from(ninFaceMatchLogs).orderBy(desc(ninFaceMatchLogs.requestedAt)).limit(input.limit);
       return q;
+    }),
+
+
+  // ─── Photo Fidelity Pipeline Procedures ────────────────────────────────────
+
+  assessFidelity: protectedProcedure
+    .input(z.object({
+      image_b64:       z.string(),
+      context:         z.enum(["enrollment", "verification", "payment", "border"]).optional(),
+      auto_remediate:  z.boolean().optional(),
+    }))
+        .mutation(async ({ input, ctx }) => {
+      const result = await assessFidelity({
+        image_b64:      input.image_b64,
+        context:        input.context,
+        auto_remediate: input.auto_remediate ?? true,
+      }) as any;
+      await db.insert(faceFidelityAuditLogs).values({
+        subjectId:          String(ctx.user.id),
+        tenantId:           ctx.user.tenantId ?? "default",
+        overallScore:       String(result.overall_score ?? 0),
+        enrollmentReady:    result.enrollment_ready ?? false,
+        icaoCompliant:      result.icao?.fully_compliant ?? false,
+        remediationApplied: result.remediation_applied ?? false,
+        rejectionReason:    result.rejection_reason ?? null,
+        guidancePriority:   result.guidance_priority ?? null,
+        poseYaw:            result.pose ? String(result.pose.yaw) : null,
+        posePitch:          result.pose ? String(result.pose.pitch) : null,
+        poseRoll:           result.pose ? String(result.pose.roll) : null,
+        sharpnessScore:     result.sharpness ? String(result.sharpness.score) : null,
+        brightnessScore:    result.brightness ? String(result.brightness.score) : null,
+        faceWidth:          result.face_dimensions?.width ?? null,
+        faceHeight:         result.face_dimensions?.height ?? null,
+        context:            input.context ?? "enrollment",
+      });
+      return result;
+    }),
+  getCaptureGuidance: protectedProcedure
+    .input(z.object({
+      image_b64: z.string(),
+      context:   z.enum(["enrollment", "verification", "payment", "border"]).optional(),
+    }))
+    .mutation(async ({ input, ctx }) => {
+      const result = await getCaptureGuidance({
+        image_b64: input.image_b64,
+        context:   input.context,
+      }) as any;
+      await db.insert(faceCaptureGuidanceLogs).values({
+        subjectId:    String(ctx.user.id),
+        ready:        result.ready ?? false,
+        primaryIssue: result.primary_issue ?? null,
+        instructions: result.instructions ?? null,
+        qualityScore: result.quality_score ? String(result.quality_score) : null,
+        context:      input.context ?? "enrollment",
+        processingMs: result.processing_ms ?? null,
+      });
+      return result;
+    }),
+
+  enrollGated: protectedProcedure
+    .input(z.object({
+      image_b64:      z.string(),
+      subject_id:     z.string(),
+      metadata:       z.record(z.string(), z.unknown()).optional(),
+      min_quality:    z.number().min(0).max(1).optional(),
+      require_icao:   z.boolean().optional(),
+      auto_remediate: z.boolean().optional(),
+    }))
+    .mutation(async ({ input }) => {
+      return enrollGated({
+        image_b64:      input.image_b64,
+        subject_id:     input.subject_id,
+        metadata:       input.metadata,
+        min_quality:    input.min_quality,
+        require_icao:   input.require_icao,
+        auto_remediate: input.auto_remediate,
+      });
+    }),
+
+  autoCropFace: protectedProcedure
+    .input(z.object({
+      image_b64: z.string(),
+      context:   z.string().optional(),
+    }))
+    .mutation(async ({ input }) => {
+      return autoCropFace({
+        image_b64: input.image_b64,
+        context:   input.context,
+      });
     }),
 
 });

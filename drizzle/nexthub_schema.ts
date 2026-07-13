@@ -1948,3 +1948,41 @@ export const ninVCVerificationLogs = pgTable("nin_vc_verification_logs", {
   vcIdIdx:    index("nin_vc_id_idx").on(t.vcId),
   subjectIdx: index("nin_vc_subject_idx").on(t.subjectNinHash),
 }));
+
+// ─── Photo Fidelity Pipeline Tables ──────────────────────────────────────────
+// ICAO 9303 / ISO 19794-5 / NIST FRVT quality audit trail
+
+export const faceFidelityAuditLogs = pgTable("face_fidelity_audit_logs", {
+  id:                 text("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  subjectId:          varchar("subject_id", { length: 128 }).notNull(),
+  tenantId:           varchar("tenant_id", { length: 64 }).notNull().default("default"),
+  partnerId:          varchar("partner_id", { length: 64 }),
+  overallScore:       varchar("overall_score", { length: 16 }).notNull(),
+  enrollmentReady:    boolean("enrollment_ready").notNull(),
+  icaoCompliant:      boolean("icao_compliant").notNull(),
+  remediationApplied: boolean("remediation_applied").notNull().default(false),
+  rejectionReason:    text("rejection_reason"),
+  guidancePriority:   varchar("guidance_priority", { length: 64 }),
+  poseYaw:            varchar("pose_yaw", { length: 16 }),
+  posePitch:          varchar("pose_pitch", { length: 16 }),
+  poseRoll:           varchar("pose_roll", { length: 16 }),
+  sharpnessScore:     varchar("sharpness_score", { length: 16 }),
+  brightnessScore:    varchar("brightness_score", { length: 16 }),
+  faceWidth:          integer("face_width"),
+  faceHeight:         integer("face_height"),
+  context:            varchar("context", { length: 32 }).notNull().default("enrollment"),
+  createdAt:          timestamp("created_at").notNull().defaultNow(),
+});
+
+export const faceCaptureGuidanceLogs = pgTable("face_capture_guidance_logs", {
+  id:              text("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  subjectId:       varchar("subject_id", { length: 128 }).notNull(),
+  partnerId:       varchar("partner_id", { length: 64 }),
+  ready:           boolean("ready").notNull(),
+  primaryIssue:    varchar("primary_issue", { length: 64 }),
+  instructions:    text("instructions"),
+  qualityScore:    varchar("quality_score", { length: 16 }),
+  context:         varchar("context", { length: 32 }).notNull().default("enrollment"),
+  processingMs:    integer("processing_ms"),
+  createdAt:       timestamp("created_at").notNull().defaultNow(),
+});

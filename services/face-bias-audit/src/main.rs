@@ -281,6 +281,10 @@ async fn main() -> Result<()> {
         .route("/v1/ninauth/consent-audit",    post(ingest_ninauth_consent))
         .route("/v1/ninauth/face-match-audit", post(ingest_nin_face_match_audit))
         .route("/v1/ninauth/vc-audit",         post(ingest_vc_audit))
+        // Photo Fidelity Pipeline audit routes
+        .route("/v1/fidelity/ingest",          post(ingest_fidelity_audit))
+        .route("/v1/fidelity/report",          get(fidelity_report_handler))
+        .route("/v1/fidelity/compliance",      get(fidelity_compliance_handler))
         .layer(CorsLayer::permissive())
         .with_state(state);
 
@@ -395,6 +399,38 @@ async fn run_migrations(db: &PgPool) -> Result<()> {
         ON ninauth_vc_audit (subject_nin_hash, recorded_at DESC)
     "#).execute(db).await?;
 
+    // Photo fidelity audit table (ICAO 9303 / ISO 19794-5 compliance tracking)
+    sqlx::query(r#"
+        CREATE TABLE IF NOT EXISTS face_fidelity_audit (
+            id                  UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+            subject_id          TEXT        NOT NULL,
+            tenant_id           TEXT        NOT NULL DEFAULT 'default',
+            partner_id          TEXT,
+            overall_score       FLOAT8      NOT NULL,
+            enrollment_ready    BOOLEAN     NOT NULL,
+            icao_compliant      BOOLEAN     NOT NULL,
+            remediation_applied BOOLEAN     NOT NULL DEFAULT FALSE,
+            rejection_reason    TEXT,
+            guidance_priority   TEXT,
+            pose_yaw            FLOAT8,
+            pose_pitch          FLOAT8,
+            pose_roll           FLOAT8,
+            sharpness_score     FLOAT8,
+            brightness_score    FLOAT8,
+            face_width          INT,
+            face_height         INT,
+            context             TEXT        NOT NULL DEFAULT 'enrollment',
+            recorded_at         TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        )
+    "#).execute(db).await?;
+    sqlx::query(r#"
+        CREATE INDEX IF NOT EXISTS idx_fidelity_audit_tenant_subject
+        ON face_fidelity_audit (tenant_id, subject_id, recorded_at DESC)
+    "#).execute(db).await?;
+    sqlx::query(r#"
+        CREATE INDEX IF NOT EXISTS idx_fidelity_audit_icao
+        ON face_fidelity_audit (icao_compliant, enrollment_ready, recorded_at DESC)
+    "#).execute(db).await?;
     info!("db_migrations_complete");
     Ok(())
 }
@@ -955,4 +991,235 @@ struct BiasEvent {
     age_bracket: String,
     gender:      String,
     partner_id:  Option<String>,
+}
+
+// ── Photo Fidelity Audit Handlers ─────────────────────────────────────────────
+
+#[derive(Debug, Deserialize)]
+struct FidelityAuditRequest {
+    subject_id:          String,
+    tenant_id:           Option<String>,
+    partner_id:          Option<String>,
+    overall_score:       f64,
+    enrollment_ready:    bool,
+    icao_compliant:      bool,
+    remediation_applied: Option<bool>,
+    rejection_reason:    Option<String>,
+    guidance_priority:   Option<String>,
+    pose_yaw:            Option<f64>,
+    pose_pitch:          Option<f64>,
+    pose_roll:           Option<f64>,
+    sharpness_score:     Option<f64>,
+    brightness_score:    Option<f64>,
+    face_width:          Option<i32>,
+    face_height:         Option<i32>,
+    context:             Option<String>,
+}
+
+#[derive(Debug, Serialize)]
+struct FidelityReportResponse {
+    tenant_id:              String,
+    total_assessments:      i64,
+    icao_compliant_count:   i64,
+    enrollment_ready_count: i64,
+    icao_compliance_rate:   f64,
+    enrollment_ready_rate:  f64,
+    avg_overall_score:      f64,
+    remediation_rate:       f64,
+    top_rejection_reasons:  Vec<RejectionStat>,
+    generated_at:           String,
+}
+
+#[derive(Debug, Serialize)]
+struct RejectionStat {
+    reason: String,
+    count:  i64,
+}
+
+#[derive(Debug, Serialize)]
+struct FidelityComplianceResponse {
+    tenant_id:          String,
+    period_days:        i32,
+    icao_pass_rate:     f64,
+    iso_pass_rate:      f64,
+    avg_quality_score:  f64,
+    total_enrollments:  i64,
+    failed_enrollments: i64,
+    status:             String, // "compliant" | "warning" | "non_compliant"
+    generated_at:       String,
+}
+
+async fn ingest_fidelity_audit(
+    State(state): State<AppState>,
+    Json(req): Json<FidelityAuditRequest>,
+) -> impl IntoResponse {
+    let tenant_id = req.tenant_id.clone().unwrap_or_else(|| "default".to_string());
+    let context   = req.context.clone().unwrap_or_else(|| "enrollment".to_string());
+
+    let result = sqlx::query(r#"
+        INSERT INTO face_fidelity_audit
+            (subject_id, tenant_id, partner_id, overall_score, enrollment_ready,
+             icao_compliant, remediation_applied, rejection_reason, guidance_priority,
+             pose_yaw, pose_pitch, pose_roll, sharpness_score, brightness_score,
+             face_width, face_height, context)
+        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17)
+    "#)
+    .bind(&req.subject_id)
+    .bind(&tenant_id)
+    .bind(&req.partner_id)
+    .bind(req.overall_score)
+    .bind(req.enrollment_ready)
+    .bind(req.icao_compliant)
+    .bind(req.remediation_applied.unwrap_or(false))
+    .bind(&req.rejection_reason)
+    .bind(&req.guidance_priority)
+    .bind(req.pose_yaw)
+    .bind(req.pose_pitch)
+    .bind(req.pose_roll)
+    .bind(req.sharpness_score)
+    .bind(req.brightness_score)
+    .bind(req.face_width)
+    .bind(req.face_height)
+    .bind(&context)
+    .execute(&state.db)
+    .await;
+
+    match result {
+        Ok(_) => (StatusCode::CREATED, Json(serde_json::json!({"status":"recorded"}))).into_response(),
+        Err(e) => {
+            error!("fidelity_audit_insert_error: {}", e);
+            (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error":"db_error"}))).into_response()
+        }
+    }
+}
+
+async fn fidelity_report_handler(
+    State(state): State<AppState>,
+    axum::extract::Query(params): axum::extract::Query<std::collections::HashMap<String, String>>,
+) -> impl IntoResponse {
+    let tenant_id = params.get("tenant_id").cloned().unwrap_or_else(|| "default".to_string());
+    let days: i32 = params.get("days").and_then(|d| d.parse().ok()).unwrap_or(30);
+
+    let row = sqlx::query!(r#"
+        SELECT
+            COUNT(*)                                                AS total,
+            COUNT(*) FILTER (WHERE icao_compliant = TRUE)          AS icao_ok,
+            COUNT(*) FILTER (WHERE enrollment_ready = TRUE)        AS enroll_ok,
+            COUNT(*) FILTER (WHERE remediation_applied = TRUE)     AS remediated,
+            AVG(overall_score)                                      AS avg_score
+        FROM face_fidelity_audit
+        WHERE tenant_id = $1
+          AND recorded_at >= NOW() - ($2 || ' days')::INTERVAL
+    "#, tenant_id, days.to_string())
+    .fetch_one(&state.db)
+    .await;
+
+    match row {
+        Ok(r) => {
+            let total     = r.total.unwrap_or(0);
+            let icao_ok   = r.icao_ok.unwrap_or(0);
+            let enroll_ok = r.enroll_ok.unwrap_or(0);
+            let remediated = r.remediated.unwrap_or(0);
+            let avg_score  = r.avg_score.unwrap_or(0.0);
+
+            let icao_rate   = if total > 0 { icao_ok   as f64 / total as f64 } else { 0.0 };
+            let enroll_rate = if total > 0 { enroll_ok as f64 / total as f64 } else { 0.0 };
+            let remed_rate  = if total > 0 { remediated as f64 / total as f64 } else { 0.0 };
+
+            // Top rejection reasons
+            let reasons = sqlx::query!(r#"
+                SELECT rejection_reason, COUNT(*) AS cnt
+                FROM face_fidelity_audit
+                WHERE tenant_id = $1
+                  AND rejection_reason IS NOT NULL
+                  AND recorded_at >= NOW() - ($2 || ' days')::INTERVAL
+                GROUP BY rejection_reason
+                ORDER BY cnt DESC
+                LIMIT 5
+            "#, tenant_id, days.to_string())
+            .fetch_all(&state.db)
+            .await
+            .unwrap_or_default()
+            .into_iter()
+            .map(|r| RejectionStat {
+                reason: r.rejection_reason.unwrap_or_default(),
+                count:  r.cnt.unwrap_or(0),
+            })
+            .collect::<Vec<_>>();
+
+            let resp = FidelityReportResponse {
+                tenant_id,
+                total_assessments:      total,
+                icao_compliant_count:   icao_ok,
+                enrollment_ready_count: enroll_ok,
+                icao_compliance_rate:   icao_rate,
+                enrollment_ready_rate:  enroll_rate,
+                avg_overall_score:      avg_score,
+                remediation_rate:       remed_rate,
+                top_rejection_reasons:  reasons,
+                generated_at:           chrono::Utc::now().to_rfc3339(),
+            };
+            (StatusCode::OK, Json(resp)).into_response()
+        }
+        Err(e) => {
+            error!("fidelity_report_error: {}", e);
+            (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error":"db_error"}))).into_response()
+        }
+    }
+}
+
+async fn fidelity_compliance_handler(
+    State(state): State<AppState>,
+    axum::extract::Query(params): axum::extract::Query<std::collections::HashMap<String, String>>,
+) -> impl IntoResponse {
+    let tenant_id = params.get("tenant_id").cloned().unwrap_or_else(|| "default".to_string());
+    let days: i32 = params.get("days").and_then(|d| d.parse().ok()).unwrap_or(30);
+
+    let row = sqlx::query!(r#"
+        SELECT
+            COUNT(*)                                                AS total,
+            COUNT(*) FILTER (WHERE icao_compliant = TRUE)          AS icao_ok,
+            COUNT(*) FILTER (WHERE enrollment_ready = FALSE)       AS failed,
+            AVG(overall_score)                                      AS avg_score
+        FROM face_fidelity_audit
+        WHERE tenant_id = $1
+          AND recorded_at >= NOW() - ($2 || ' days')::INTERVAL
+    "#, tenant_id, days.to_string())
+    .fetch_one(&state.db)
+    .await;
+
+    match row {
+        Ok(r) => {
+            let total   = r.total.unwrap_or(0);
+            let icao_ok = r.icao_ok.unwrap_or(0);
+            let failed  = r.failed.unwrap_or(0);
+            let avg_score = r.avg_score.unwrap_or(0.0);
+
+            let icao_rate = if total > 0 { icao_ok as f64 / total as f64 } else { 0.0 };
+            let status = if icao_rate >= 0.95 {
+                "compliant"
+            } else if icao_rate >= 0.80 {
+                "warning"
+            } else {
+                "non_compliant"
+            };
+
+            let resp = FidelityComplianceResponse {
+                tenant_id,
+                period_days:        days,
+                icao_pass_rate:     icao_rate,
+                iso_pass_rate:      icao_rate, // ISO 19794-5 uses same gate in this impl
+                avg_quality_score:  avg_score,
+                total_enrollments:  total,
+                failed_enrollments: failed,
+                status:             status.to_string(),
+                generated_at:       chrono::Utc::now().to_rfc3339(),
+            };
+            (StatusCode::OK, Json(resp)).into_response()
+        }
+        Err(e) => {
+            error!("fidelity_compliance_error: {}", e);
+            (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error":"db_error"}))).into_response()
+        }
+    }
 }

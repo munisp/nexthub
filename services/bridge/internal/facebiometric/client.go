@@ -613,3 +613,144 @@ func (c *Client) NINVCVerify(ctx context.Context, req NINVCVerifyRequest) (*NINV
 var out NINVCVerifyResult
 return &out, c.post(ctx, "/v1/ninauth/verify-vc", req, &out)
 }
+
+// ─── Photo Fidelity Pipeline ──────────────────────────────────────────────────
+
+// ICAOCompliance holds per-criterion ICAO 9303 compliance flags.
+type ICAOCompliance struct {
+FullyCompliant    bool     `json:"fully_compliant"`
+ResolutionOk      bool     `json:"resolution_ok"`
+FaceSizeOk        bool     `json:"face_size_ok"`
+InterEyeDistance  float64  `json:"inter_eye_distance"`
+InterEyeOk        bool     `json:"inter_eye_ok"`
+YawOk             bool     `json:"yaw_ok"`
+PitchOk           bool     `json:"pitch_ok"`
+RollOk            bool     `json:"roll_ok"`
+BrightnessOk      bool     `json:"brightness_ok"`
+ContrastOk        bool     `json:"contrast_ok"`
+SharpnessOk       bool     `json:"sharpness_ok"`
+OcclusionOk       bool     `json:"occlusion_ok"`
+FailedCriteria    []string `json:"failed_criteria"`
+}
+
+// BRISQUEResult holds the BRISQUE no-reference perceptual quality result.
+type BRISQUEResult struct {
+Score                float64 `json:"score"`
+Normalized           float64 `json:"normalized"`
+ArtifactsDetected    bool    `json:"artifacts_detected"`
+NoiseLevel           float64 `json:"noise_level"`
+CompressionArtifacts bool    `json:"compression_artifacts"`
+}
+
+// FidelityRequest is the request body for the full fidelity assessment.
+type FidelityRequest struct {
+ImageB64       string `json:"image_b64"`
+AutoRemediate  bool   `json:"auto_remediate"`
+ReturnProcessed bool  `json:"return_processed"`
+Context        string `json:"context"`
+}
+
+// FidelityResponse is the full fidelity report returned by the Python service.
+type FidelityResponse struct {
+OverallScore        float64         `json:"overall_score"`
+EnrollmentReady     bool            `json:"enrollment_ready"`
+RemediationApplied  bool            `json:"remediation_applied"`
+SharpnessScore      float64         `json:"sharpness_score"`
+BrightnessScore     float64         `json:"brightness_score"`
+ContrastScore       float64         `json:"contrast_score"`
+FaceSizeRatio       float64         `json:"face_size_ratio"`
+OcclusionScore      float64         `json:"occlusion_score"`
+PoseYaw             float64         `json:"pose_yaw"`
+PosePitch           float64         `json:"pose_pitch"`
+PoseRoll            float64         `json:"pose_roll"`
+ImageWidth          int             `json:"image_width"`
+ImageHeight         int             `json:"image_height"`
+FaceWidth           int             `json:"face_width"`
+FaceHeight          int             `json:"face_height"`
+FaceDetected        bool            `json:"face_detected"`
+MultipleFaces       bool            `json:"multiple_faces"`
+NeuralQualityScore  *float64        `json:"neural_quality_score,omitempty"`
+Guidance            []string        `json:"guidance"`
+GuidancePriority    string          `json:"guidance_priority"`
+ICAO                *ICAOCompliance `json:"icao,omitempty"`
+BRISQUE             *BRISQUEResult  `json:"brisque,omitempty"`
+ProcessedImageB64   *string         `json:"processed_image_b64,omitempty"`
+Error               *string         `json:"error,omitempty"`
+ProcessingMs        float64         `json:"processing_ms"`
+}
+
+// CaptureGuidanceRequest is the lightweight real-time guidance request.
+type CaptureGuidanceRequest struct {
+ImageB64 string `json:"image_b64"`
+Context  string `json:"context"`
+}
+
+// CaptureGuidanceResponse is the lightweight real-time guidance response.
+type CaptureGuidanceResponse struct {
+OverallScore    float64  `json:"overall_score"`
+EnrollmentReady bool     `json:"enrollment_ready"`
+GuidancePriority string  `json:"guidance_priority"`
+Guidance        []string `json:"guidance"`
+PoseYaw         float64  `json:"pose_yaw"`
+PosePitch       float64  `json:"pose_pitch"`
+PoseRoll        float64  `json:"pose_roll"`
+FaceDetected    bool     `json:"face_detected"`
+ICAOFailed      []string `json:"icao_failed"`
+ProcessingMs    float64  `json:"processing_ms"`
+}
+
+// EnrollWithFidelityRequest is the ICAO-gated enrollment request.
+type EnrollWithFidelityRequest struct {
+SubjectID      string                 `json:"subject_id"`
+TenantID       string                 `json:"tenant_id"`
+ImageB64       string                 `json:"image_b64"`
+AutoRemediate  bool                   `json:"auto_remediate"`
+Metadata       map[string]interface{} `json:"metadata,omitempty"`
+MinQuality     float64                `json:"min_quality"`
+RequireICAO    bool                   `json:"require_icao"`
+}
+
+// EnrollWithFidelityResult is the ICAO-gated enrollment result.
+type EnrollWithFidelityResult struct {
+SubjectID       string                 `json:"subject_id"`
+Enrolled        bool                   `json:"enrolled"`
+EmbeddingID     *string                `json:"embedding_id,omitempty"`
+QualityScore    float64                `json:"quality_score"`
+ICAOCompliant   bool                   `json:"icao_compliant"`
+FidelityReport  map[string]interface{} `json:"fidelity_report,omitempty"`
+RejectionReason *string                `json:"rejection_reason,omitempty"`
+}
+
+// AutoCropResult is the response from the auto-crop endpoint.
+type AutoCropResult struct {
+CroppedImageB64 string `json:"cropped_image_b64"`
+Width           int    `json:"width"`
+Height          int    `json:"height"`
+ICAOMinMet      bool   `json:"icao_min_met"`
+}
+
+// ─── Fidelity Client Methods ──────────────────────────────────────────────────
+
+// AssessFidelity runs the full 5-layer ICAO/ISO/NIST fidelity assessment.
+func (c *Client) AssessFidelity(ctx context.Context, req FidelityRequest) (*FidelityResponse, error) {
+var out FidelityResponse
+return &out, c.post(ctx, "/v1/face/fidelity", req, &out)
+}
+
+// CaptureGuidance returns low-latency real-time capture guidance.
+func (c *Client) CaptureGuidance(ctx context.Context, req CaptureGuidanceRequest) (*CaptureGuidanceResponse, error) {
+var out CaptureGuidanceResponse
+return &out, c.post(ctx, "/v1/face/capture-guidance", req, &out)
+}
+
+// EnrollGated runs ICAO-gated enrollment with auto-remediation.
+func (c *Client) EnrollGated(ctx context.Context, req EnrollWithFidelityRequest) (*EnrollWithFidelityResult, error) {
+var out EnrollWithFidelityResult
+return &out, c.post(ctx, "/v1/face/enroll-gated", req, &out)
+}
+
+// AutoCrop crops and enhances the face region to ICAO standards.
+func (c *Client) AutoCrop(ctx context.Context, req FidelityRequest) (*AutoCropResult, error) {
+var out AutoCropResult
+return &out, c.post(ctx, "/v1/face/auto-crop", req, &out)
+}

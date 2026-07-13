@@ -220,10 +220,6 @@ func (h *Handler) HandleFaceIdentify(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
-	if len(req.CandidateIDs) == 0 {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "candidate_ids must not be empty"})
-		return
-	}
 	if req.TopK == 0 {
 		req.TopK = 5
 	}
@@ -277,5 +273,44 @@ func (h *Handler) HandleNameMatch(c *gin.Context) {
 		return
 	}
 
+	c.JSON(http.StatusOK, result)
+}
+
+// HandleFaceBatchIdentify handles batch 1:N face identification via Qdrant HNSW.
+func (h *Handler) HandleFaceBatchIdentify(c *gin.Context) {
+	if h.FaceBiometric == nil {
+		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "face-biometric service not configured"})
+		return
+	}
+	var req facebiometric.FaceBatchIdentifyRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	result, err := h.FaceBiometric.BatchIdentifyFaces(c.Request.Context(), req)
+	if err != nil {
+		h.Log.Error("face.batch_identify.error", zap.Error(err))
+		c.JSON(http.StatusBadGateway, gin.H{"error": err.Error()})
+		return
+	}
+	h.Log.Info("face.batch_identify.complete",
+		zap.Int("total", result.TotalProbes),
+		zap.Int("identified", result.IdentifiedCount),
+	)
+	c.JSON(http.StatusOK, result)
+}
+
+// HandleFacePublicKey returns the RS256 public key for verifying signed assertions.
+func (h *Handler) HandleFacePublicKey(c *gin.Context) {
+	if h.FaceBiometric == nil {
+		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "face-biometric service not configured"})
+		return
+	}
+	result, err := h.FaceBiometric.GetPublicKey(c.Request.Context())
+	if err != nil {
+		h.Log.Error("face.public_key.error", zap.Error(err))
+		c.JSON(http.StatusBadGateway, gin.H{"error": err.Error()})
+		return
+	}
 	c.JSON(http.StatusOK, result)
 }

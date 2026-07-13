@@ -5,17 +5,31 @@ redis[asyncio]==5.0.6
 aiokafka==0.11.0
 pydantic==2.7.4
 python-dotenv==1.0.1
+
 # Face recognition and liveness
 insightface==0.7.3
+# GPU: onnxruntime-gpu replaces onnxruntime when NVIDIA GPU is available.
+# The Dockerfile selects the correct package via build arg USE_GPU.
 onnxruntime==1.18.1
 opencv-python-headless==4.10.0.84
 numpy==1.26.4
 Pillow==10.3.0
+
 # Anti-spoofing / liveness
-# Silent-Face-Anti-Spoofing model loaded via ONNX (bundled weights)
-# Image quality
+# Silent-Face-Anti-Spoofing model downloaded at build time via download_models.py
+
+# Vector database — Qdrant client for large-scale 1:N ANN search (HNSW)
+qdrant-client==1.9.1
+
+# Signed payment assertion (JWT RS256)
+PyJWT==2.8.0
+cryptography==42.0.8
+
+# Image quality — scikit-image LBP (replaces O(h×w) pure-Python loop)
 scikit-image==0.23.2
-# Name matching — proper Jaro-Winkler
+
+# Name matching — proper Jaro-Winkler + Soundex
 jellyfish==1.0.3
+
 # Metrics / observability
 prometheus-fastapi-instrumentator==6.1.0

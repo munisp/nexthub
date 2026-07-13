@@ -160,13 +160,33 @@ type FaceEnrollResult struct {
 	ProcessingMS   float64 `json:"processing_ms"`
 }
 
-// FaceIdentifyRequest is the request body for 1:N identification.
+// FaceIdentifyRequest is the request body for 1:N identification via Qdrant HNSW.
 type FaceIdentifyRequest struct {
-	ProbeImageB64   string   `json:"probe_image_b64"`
-	CandidateIDs    []string `json:"candidate_ids"`
-	TenantID        string   `json:"tenant_id,omitempty"`
-	RequireLiveness bool     `json:"require_liveness"`
-	TopK            int      `json:"top_k"`
+	ProbeImageB64   string  `json:"probe_image_b64"`
+	TenantID        string  `json:"tenant_id,omitempty"`
+	RequireLiveness bool    `json:"require_liveness"`
+	TopK            int     `json:"top_k"`
+	ScoreThreshold  float64 `json:"score_threshold,omitempty"`
+}
+
+// FaceBatchIdentifyRequest is the request body for batch 1:N identification.
+type FaceBatchIdentifyRequest struct {
+	Probes   []FaceIdentifyRequest `json:"probes"`
+	TenantID string                `json:"tenant_id,omitempty"`
+}
+
+// FaceBatchIdentifyResult is the response from batch 1:N identification.
+type FaceBatchIdentifyResult struct {
+	Results         []FaceIdentifyResult `json:"results"`
+	TotalProbes     int                  `json:"total_probes"`
+	IdentifiedCount int                  `json:"identified_count"`
+	ProcessingMS    float64              `json:"processing_ms"`
+}
+
+// FacePublicKeyResult holds the RS256 public key for verifying signed assertions.
+type FacePublicKeyResult struct {
+	PublicKey string `json:"public_key"`
+	Algorithm string `json:"algorithm"`
 }
 
 // FaceIdentifyMatch holds a single match in a 1:N identification result.
@@ -249,6 +269,40 @@ func (c *Client) IdentifyFace(ctx context.Context, req FaceIdentifyRequest) (*Fa
 	var result FaceIdentifyResult
 	if err := c.post(ctx, "/v1/face/identify", req, &result); err != nil {
 		return nil, fmt.Errorf("face identify: %w", err)
+	}
+	return &result, nil
+}
+
+// BatchIdentifyFaces performs batch 1:N face identification.
+func (c *Client) BatchIdentifyFaces(ctx context.Context, req FaceBatchIdentifyRequest) (*FaceBatchIdentifyResult, error) {
+	var result FaceBatchIdentifyResult
+	if err := c.post(ctx, "/v1/face/batch-identify", req, &result); err != nil {
+		return nil, fmt.Errorf("face batch identify: %w", err)
+	}
+	return &result, nil
+}
+
+// GetPublicKey retrieves the RS256 public key for verifying signed assertions.
+func (c *Client) GetPublicKey(ctx context.Context) (*FacePublicKeyResult, error) {
+	var result FacePublicKeyResult
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.cfg.BaseURL+"/v1/face/public-key", nil)
+	if err != nil {
+		return nil, fmt.Errorf("build public-key request: %w", err)
+	}
+	resp, err := c.http.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("http get public-key: %w", err)
+	}
+	defer resp.Body.Close()
+	raw, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("read public-key response: %w", err)
+	}
+	if resp.StatusCode >= 400 {
+		return nil, fmt.Errorf("face-biometric public-key error %d: %s", resp.StatusCode, string(raw))
+	}
+	if err := json.Unmarshal(raw, &result); err != nil {
+		return nil, fmt.Errorf("unmarshal public-key: %w", err)
 	}
 	return &result, nil
 }

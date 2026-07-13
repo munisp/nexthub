@@ -1691,3 +1691,61 @@ export const facePartnerUsageLogs = pgTable("face_partner_usage_logs", {
   keyIdx:     index("fpul_key_idx").on(t.keyId),
   createdIdx: index("fpul_created_idx").on(t.createdAt),
 }));
+
+// ── Face Biometric — Batch Identification Logs ────────────────────────────────
+export const faceBatchIdentifyLogs = pgTable("face_batch_identify_logs", {
+  id:              text("id").primaryKey(),
+  partnerId:       text("partner_id"),
+  tenantId:        text("tenant_id"),
+  totalProbes:     integer("total_probes").notNull(),
+  identifiedCount: integer("identified_count").notNull(),
+  processingMs:    real("processing_ms"),
+  requestId:       text("request_id"),
+  ipAddress:       text("ip_address"),
+  createdAt:       timestamp("created_at").defaultNow(),
+}, (t) => ({
+  partnerIdx: index("fbil_partner_idx").on(t.partnerId),
+  createdIdx: index("fbil_created_idx").on(t.createdAt),
+}));
+
+// ── Face Biometric — Signed Payment Assertions ────────────────────────────────
+// Stores RS256-signed JWT assertions issued after a successful face verification
+// for payment authentication (SCA/CBN compliance).
+export const facePaymentAssertions = pgTable("face_payment_assertions", {
+  id:            text("id").primaryKey(),
+  subjectId:     text("subject_id").notNull(),
+  tenantId:      text("tenant_id"),
+  partnerId:     text("partner_id"),
+  jwtToken:      text("jwt_token").notNull(),
+  similarity:    real("similarity").notNull(),
+  livenessPassed: boolean("liveness_passed"),
+  qualityPassed: boolean("quality_passed"),
+  issuedAt:      timestamp("issued_at").defaultNow(),
+  expiresAt:     timestamp("expires_at").notNull(),
+  usedAt:        timestamp("used_at"),
+  revoked:       boolean("revoked").notNull().default(false),
+  revokedReason: text("revoked_reason"),
+  ipAddress:     text("ip_address"),
+  requestId:     text("request_id"),
+}, (t) => ({
+  subjectIdx:  index("fpa_subject_idx").on(t.subjectId),
+  partnerIdx:  index("fpa_partner_idx").on(t.partnerId),
+  expiresIdx:  index("fpa_expires_idx").on(t.expiresAt),
+  revokedIdx:  index("fpa_revoked_idx").on(t.revoked),
+}));
+
+// ── Face Biometric — Public Key Cache ─────────────────────────────────────────
+// Caches the RS256 public key fetched from the face-biometric sidecar for
+// assertion verification without round-tripping the sidecar on every request.
+export const faceBiometricPublicKeys = pgTable("face_biometric_public_keys", {
+  id:         text("id").primaryKey(),
+  algorithm:  text("algorithm").notNull().default("RS256"),
+  publicKey:  text("public_key").notNull(),
+  fingerprint: text("fingerprint").notNull(),
+  isActive:   boolean("is_active").notNull().default(true),
+  fetchedAt:  timestamp("fetched_at").defaultNow(),
+  expiresAt:  timestamp("expires_at"),
+}, (t) => ({
+  activeIdx:      index("fbpk_active_idx").on(t.isActive),
+  fingerprintIdx: uniqueIndex("fbpk_fingerprint_idx").on(t.fingerprint),
+}));

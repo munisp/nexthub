@@ -248,8 +248,10 @@ func main() {
 		infra.POST("/face/liveness",   h.HandleFaceLiveness)
 		infra.POST("/face/quality",    h.HandleFaceQuality)
 		infra.POST("/face/enroll",     h.HandleFaceEnroll)
-		infra.POST("/face/identify",   h.HandleFaceIdentify)
-		infra.POST("/face/name-match", h.HandleNameMatch)
+		infra.POST("/face/identify",       h.HandleFaceIdentify)
+		infra.POST("/face/batch-identify", h.HandleFaceBatchIdentify)
+		infra.GET("/face/public-key",      h.HandleFacePublicKey)
+		infra.POST("/face/name-match",     h.HandleNameMatch)
 	}
 	// ── Partner Public API (X-API-Key auth + per-key rate limiting) ──────────
 	// Third-party apps, cameras, and integrators use this route group.
@@ -281,6 +283,12 @@ func main() {
 			partner.POST("/face/identify",
 				bMiddleware.RequireScope("face:identify"),
 				h.PartnerFaceIdentify)
+			// Batch 1:N Identification — scope: face:identify
+			partner.POST("/face/batch-identify",
+				bMiddleware.RequireScope("face:identify"),
+				h.HandleFaceBatchIdentify)
+			// RS256 public key for verifying signed assertions (public endpoint)
+			partner.GET("/face/public-key", h.HandleFacePublicKey)
 		}
 	} else {
 		log.Warn("partner_api_disabled", zap.String("reason", "DB or Redis unavailable"))

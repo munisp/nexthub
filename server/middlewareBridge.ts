@@ -2596,3 +2596,27 @@ export interface PartnerApiKeyResult {
   rawKey: string; scopes: string[]; rateLimitRpm: number;
   environment: string; expiresAt?: string; createdAt: string;
 }
+
+// ── Face Biometric — Batch Identification ─────────────────────────────────────
+export interface FaceBatchProbe {
+  probe_image_b64: string; tenant_id?: string;
+  require_liveness?: boolean; top_k?: number; score_threshold?: number;
+}
+export interface FaceBatchIdentifyRequest {
+  probes: FaceBatchProbe[]; tenant_id?: string;
+}
+export interface FaceBatchIdentifyResult {
+  results: FaceIdentifyResult[]; total_probes: number;
+  identified_count: number; processing_ms: number;
+}
+export async function batchIdentifyFacesViaMiddleware(req: FaceBatchIdentifyRequest): Promise<FaceBatchIdentifyResult | null> {
+  return safe('POST', '/v1/face/batch-identify', req);
+}
+
+// ── Face Biometric — RS256 Public Key ─────────────────────────────────────────
+export interface FacePublicKeyResult {
+  public_key: string; algorithm: string;
+}
+export async function getFacePublicKeyViaMiddleware(): Promise<FacePublicKeyResult | null> {
+  return safe('GET', '/v1/face/public-key', undefined);
+}

@@ -91,6 +91,9 @@ export const NEXTHUB_KAFKA_TOPICS = {
   // Paygate → NextHub (consumed here)
   PAYGATE_AUDIT:         "paygate.audit.v1",
   PAYGATE_CORRIDOR_VOL:  "paygate.corridor.volume.v1",
+  // Face Biometric
+  FACE_BATCH_IDENTIFY_RESULT: "nexthub.face.batch.identify.result.v1",
+  FACE_PAYMENT_ASSERTION:     "nexthub.face.payment.assertion.v1",
 } as const;
 
 // ─── Typed event payloads ─────────────────────────────────────────────────────

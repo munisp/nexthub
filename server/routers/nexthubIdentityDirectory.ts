@@ -250,4 +250,183 @@ export const nexthubIdentityDirectoryRouter = router({
 
       return { total: input.aliases.length, succeeded, failed };
     }),
+
+  // ─── MOSIP eKYC ─────────────────────────────────────────────────────────────
+
+  /** Generate a MOSIP OTP for identity verification */
+  generateMOSIPOTP: protectedProcedure
+    .input(z.object({
+      individualId:     z.string().min(5).max(64),
+      individualIdType: z.enum(["UIN", "VID", "NIN", "BVN"]),
+      otpChannel:       z.array(z.enum(["EMAIL", "PHONE"])).min(1),
+      transactionId:    z.string().uuid(),
+    }))
+    .mutation(async ({ input, ctx }) => {
+      const { generateMOSIPOTPViaMiddleware } = await import("../middlewareBridge");
+      const { db } = await import("../db");
+      const { mosipOtpLog } = await import("../../drizzle/nexthub_schema");
+      const result = await generateMOSIPOTPViaMiddleware({
+        ...input,
+        tenantId: String(ctx.user!.id),
+      });
+      // Persist audit log regardless of bridge result
+      await db.insert(mosipOtpLog).values({
+        tenantId:        String(ctx.user!.id),
+        individualId:    input.individualId,
+        individualIdType:input.individualIdType,
+        transactionId:   input.transactionId,
+        otpChannel:      input.otpChannel,
+        maskedEmail:     result?.maskedEmail ?? null,
+        maskedMobile:    result?.maskedMobile ?? null,
+        status:          result ? "OTP_SENT" : "FAILED",
+      });
+      if (!result) throw new Error("MOSIP OTP service unavailable");
+      return result;
+    }),
+
+  /** Submit a MOSIP IDA eKYC request and persist the verified identity data */
+  submitMOSIPEKYC: protectedProcedure
+    .input(z.object({
+      individualId:        z.string().min(5).max(64),
+      individualIdType:    z.enum(["UIN", "VID", "NIN", "BVN"]),
+      otp:                 z.string().optional(),
+      biometricData:       z.string().optional(),
+      consentObtained:     z.boolean(),
+      requestedAttributes: z.array(z.string()).min(1),
+      transactionId:       z.string().uuid(),
+      partnerId:           z.string().optional(),
+    }))
+    .mutation(async ({ input, ctx }) => {
+      const { submitMOSIPEKYCViaMiddleware } = await import("../middlewareBridge");
+      const { db } = await import("../db");
+      const { mosipEkycSubmissions } = await import("../../drizzle/nexthub_schema");
+      const { publishKafkaEvent, NEXTHUB_KAFKA_TOPICS } = await import("../kafka/nexthubKafkaProducer");
+      const result = await submitMOSIPEKYCViaMiddleware({
+        ...input,
+        tenantId: String(ctx.user!.id),
+      });
+      const [submission] = await db.insert(mosipEkycSubmissions).values({
+        tenantId:            String(ctx.user!.id),
+        individualId:        input.individualId,
+        individualIdType:    input.individualIdType,
+        transactionId:       input.transactionId,
+        consentObtained:     input.consentObtained,
+        requestedAttributes: input.requestedAttributes,
+        kycData:             result?.kycData ?? null,
+        status:              result ? "SUCCESS" : "FAILED",
+        partnerId:           input.partnerId ?? null,
+        responseTime:        result ? new Date() : null,
+      }).returning();
+      if (result) {
+        await publishKafkaEvent(NEXTHUB_KAFKA_TOPICS.PARTICIPANT_ONBOARDED, {
+          eventType: "MOSIP_EKYC_COMPLETED",
+          tenantId:  String(ctx.user!.id),
+          submissionId: String(submission.id),
+          individualId: input.individualId,
+          timestamp: new Date().toISOString(),
+        });
+      }
+      if (!result) throw new Error("MOSIP eKYC service unavailable");
+      return { submissionId: submission.id, ...result };
+    }),
+
+  /** Initiate an eSignet OIDC4VP authorization flow */
+  getESignetAuthURL: protectedProcedure
+    .input(z.object({
+      clientId:    z.string(),
+      redirectUri: z.string().url(),
+      scope:       z.string().optional(),
+      acrValues:   z.string().optional(),
+      state:       z.string(),
+      nonce:       z.string(),
+      claims:      z.string().optional(),
+    }))
+    .mutation(async ({ input, ctx }) => {
+      const { getESignetAuthURLViaMiddleware } = await import("../middlewareBridge");
+      const { db } = await import("../db");
+      const { esignetSessions } = await import("../../drizzle/nexthub_schema");
+      const result = await getESignetAuthURLViaMiddleware(input);
+      if (!result) throw new Error("eSignet service unavailable");
+      await db.insert(esignetSessions).values({
+        tenantId:        String(ctx.user!.id),
+        clientId:        input.clientId,
+        state:           input.state,
+        nonce:           input.nonce,
+        redirectUri:     input.redirectUri,
+        scope:           input.scope ?? null,
+        acrValues:       input.acrValues ?? null,
+        authorizationUrl:result.authorizationUrl,
+        status:          "INITIATED",
+      });
+      return result;
+    }),
+
+  /** Exchange an eSignet authorization code for tokens */
+  exchangeESignetCode: protectedProcedure
+    .input(z.object({
+      code:         z.string(),
+      redirectUri:  z.string().url(),
+      clientId:     z.string(),
+      clientSecret: z.string(),
+    }))
+    .mutation(async ({ input, ctx }) => {
+      const { exchangeESignetCodeViaMiddleware } = await import("../middlewareBridge");
+      const { db } = await import("../db");
+      const { esignetSessions } = await import("../../drizzle/nexthub_schema");
+      const { eq } = await import("drizzle-orm");
+      const result = await exchangeESignetCodeViaMiddleware({
+        ...input,
+        tenantId: String(ctx.user!.id),
+      });
+      if (!result) throw new Error("eSignet token exchange failed");
+      // Update the session with the token
+      await db.update(esignetSessions)
+        .set({
+          authCode:       input.code,
+          accessToken:    result.accessToken,
+          idToken:        result.idToken,
+          tokenExpiresAt: new Date(Date.now() + result.expiresIn * 1000),
+          status:         "TOKEN_ISSUED",
+          updatedAt:      new Date(),
+        })
+        .where(eq(esignetSessions.clientId, input.clientId));
+      return result;
+    }),
+
+  /** Issue a MOSIP Verifiable Credential via eSignet OIDC4VCI */
+  issueVerifiableCredential: protectedProcedure
+    .input(z.object({
+      accessToken:          z.string(),
+      format:               z.enum(["ldp_vc", "jwt_vc_json", "mso_mdoc"]).optional(),
+      credentialDefinition: z.record(z.string(), z.unknown()).optional(),
+      proofJwt:             z.string(),
+      individualId:         z.string().optional(),
+    }))
+    .mutation(async ({ input, ctx }) => {
+      const { issueVerifiableCredentialViaMiddleware } = await import("../middlewareBridge");
+      const { db } = await import("../db");
+      const { verifiableCredentials } = await import("../../drizzle/nexthub_schema");
+      const { publishKafkaEvent, NEXTHUB_KAFKA_TOPICS } = await import("../kafka/nexthubKafkaProducer");
+      const result = await issueVerifiableCredentialViaMiddleware({
+        ...input,
+        tenantId: String(ctx.user!.id),
+      });
+      if (!result) throw new Error("VC issuance service unavailable");
+      const [vc] = await db.insert(verifiableCredentials).values({
+        tenantId:       String(ctx.user!.id),
+        individualId:   input.individualId ?? "unknown",
+        format:         result.format,
+        credentialData: result.credential as Record<string, unknown>,
+        cNonce:         result.cNonce ?? null,
+        status:         "ACTIVE",
+      }).returning();
+      await publishKafkaEvent(NEXTHUB_KAFKA_TOPICS.PARTICIPANT_ONBOARDED, {
+        eventType:    "VC_ISSUED",
+        tenantId:     String(ctx.user!.id),
+        vcId:         String(vc.id),
+        format:       result.format,
+        timestamp:    new Date().toISOString(),
+      });
+      return { vcId: vc.id, ...result };
+    }),
 });

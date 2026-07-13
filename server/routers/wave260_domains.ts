@@ -270,6 +270,38 @@ const g2pRouter = router({
       totalDisbursedAmount: all.reduce((s, b) => s + (b.totalAmount ?? 0), 0),
     };
   }),
+
+  /** Verify a G2P beneficiary's identity via MOSIP IDA before disbursement */
+  verifyBeneficiaryIdentity: protectedProcedure
+    .input(z.object({
+      beneficiaryId:    z.string(),
+      individualId:     z.string(),
+      individualIdType: z.enum(["UIN", "VID", "NIN", "BVN"]),
+      otp:              z.string().optional(),
+      transactionId:    z.string().uuid(),
+      programId:        z.string().optional(),
+    }))
+    .mutation(async ({ input, ctx }) => {
+      const { verifyG2PBeneficiaryViaMiddleware } = await import("../middlewareBridge");
+      const { g2pIdentityVerifications } = await import("../../drizzle/nexthub_schema");
+      const result = await verifyG2PBeneficiaryViaMiddleware({
+        ...input,
+        tenantId: String(ctx.user!.id),
+      });
+      const [record] = await db.insert(g2pIdentityVerifications).values({
+        tenantId:        String(ctx.user!.id),
+        beneficiaryId:   input.beneficiaryId,
+        individualId:    input.individualId,
+        individualIdType:input.individualIdType,
+        transactionId:   input.transactionId,
+        programId:       input.programId ?? null,
+        verified:        result?.verified ?? false,
+        kycData:         result?.kycData ?? null,
+        verifiedAt:      result?.verified ? new Date() : null,
+      }).returning();
+      if (!result) throw new Error("MOSIP G2P identity verification service unavailable");
+      return { verificationId: record.id, ...result };
+    }),
 });
 
 // ─── Remittance Router ────────────────────────────────────────────────────────

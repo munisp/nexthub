@@ -2152,3 +2152,133 @@ export async function temporalCancelWorkflowViaMiddleware(
 ): Promise<{ cancelled: boolean; workflowId: string } | null> {
   return safe("POST", `/v1/temporal/workflows/${encodeURIComponent(workflowId)}/cancel`, {});
 }
+
+// ─── MOSIP IDA eKYC + eSignet OIDC4VP/OIDC4VCI ───────────────────────────────
+
+/** Request MOSIP to send an OTP to the individual's registered email/phone */
+export interface MOSIPOTPRequest {
+  individualId: string;
+  individualIdType: "UIN" | "VID" | "NIN" | "BVN";
+  otpChannel: ("EMAIL" | "PHONE")[];
+  transactionId: string;
+  tenantId?: string;
+}
+export interface MOSIPOTPResponse {
+  transactionId: string;
+  maskedEmail: string;
+  maskedMobile: string;
+  status: "OTP_SENT";
+}
+export async function generateMOSIPOTPViaMiddleware(
+  req: MOSIPOTPRequest,
+): Promise<MOSIPOTPResponse | null> {
+  return safe("POST", "/v1/mosip/otp", req);
+}
+
+/** Submit an eKYC request to MOSIP IDA and retrieve verified identity attributes */
+export interface MOSIPEKYCRequest {
+  individualId: string;
+  individualIdType: "UIN" | "VID" | "NIN" | "BVN";
+  otp?: string;
+  biometricData?: string;
+  consentObtained: boolean;
+  requestedAttributes: string[];
+  transactionId: string;
+  tenantId?: string;
+  partnerId?: string;
+}
+export interface MOSIPEKYCResponse {
+  transactionId: string;
+  responseTime: string;
+  kycData: Record<string, unknown>;
+  status: "SUCCESS";
+}
+export async function submitMOSIPEKYCViaMiddleware(
+  req: MOSIPEKYCRequest,
+): Promise<MOSIPEKYCResponse | null> {
+  return safe("POST", "/v1/mosip/ekyc", req);
+}
+
+/** Get the eSignet OIDC4VP authorization URL for a client redirect */
+export interface ESignetAuthURLRequest {
+  clientId: string;
+  redirectUri: string;
+  scope?: string;
+  acrValues?: string;
+  state: string;
+  nonce: string;
+  claims?: string;
+}
+export interface ESignetAuthURLResponse {
+  authorizationUrl: string;
+  state: string;
+  nonce: string;
+}
+export async function getESignetAuthURLViaMiddleware(
+  req: ESignetAuthURLRequest,
+): Promise<ESignetAuthURLResponse | null> {
+  return safe("POST", "/v1/mosip/esignet/auth-url", req);
+}
+
+/** Exchange an eSignet authorization code for access + ID tokens */
+export interface ESignetTokenRequest {
+  code: string;
+  redirectUri: string;
+  clientId: string;
+  clientSecret: string;
+  tenantId?: string;
+}
+export interface ESignetTokenResponse {
+  accessToken: string;
+  tokenType: string;
+  expiresIn: number;
+  idToken: string;
+}
+export async function exchangeESignetCodeViaMiddleware(
+  req: ESignetTokenRequest,
+): Promise<ESignetTokenResponse | null> {
+  return safe("POST", "/v1/mosip/esignet/token", req);
+}
+
+/** Issue a MOSIP Verifiable Credential via eSignet OIDC4VCI */
+export interface VCIssuanceRequest {
+  accessToken: string;
+  format?: "ldp_vc" | "jwt_vc_json" | "mso_mdoc";
+  credentialDefinition?: Record<string, unknown>;
+  proofJwt: string;
+  tenantId?: string;
+  individualId?: string;
+}
+export interface VCIssuanceResponse {
+  format: string;
+  credential: unknown;
+  cNonce?: string;
+  status: "ISSUED";
+}
+export async function issueVerifiableCredentialViaMiddleware(
+  req: VCIssuanceRequest,
+): Promise<VCIssuanceResponse | null> {
+  return safe("POST", "/v1/mosip/vc/issue", req);
+}
+
+/** Verify a G2P program beneficiary identity via MOSIP IDA before disbursement */
+export interface G2PBeneficiaryVerifyRequest {
+  beneficiaryId: string;
+  individualId: string;
+  individualIdType: "UIN" | "VID" | "NIN" | "BVN";
+  otp?: string;
+  transactionId: string;
+  programId?: string;
+  tenantId?: string;
+}
+export interface G2PBeneficiaryVerifyResponse {
+  beneficiaryId: string;
+  verified: boolean;
+  kycData?: Record<string, unknown>;
+  transactionId: string;
+}
+export async function verifyG2PBeneficiaryViaMiddleware(
+  req: G2PBeneficiaryVerifyRequest,
+): Promise<G2PBeneficiaryVerifyResponse | null> {
+  return safe("POST", "/v1/mosip/g2p/verify-beneficiary", req);
+}

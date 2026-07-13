@@ -1323,3 +1323,110 @@ export const redisCacheInvalidations = pgTable("redis_cache_invalidations", {
   createdAt: timestamp("created_at").defaultNow(),
 });
 export type RedisCacheInvalidation = typeof redisCacheInvalidations.$inferSelect;
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// MOSIP IDENTITY — eKYC, eSignet OIDC4VP/OIDC4VCI, Verifiable Credentials
+// ═══════════════════════════════════════════════════════════════════════════════
+
+/** Audit log of every MOSIP OTP generation request */
+export const mosipOtpLog = pgTable("mosip_otp_log", {
+  id:              serial("id").primaryKey(),
+  tenantId:        varchar("tenant_id", { length: 64 }).notNull(),
+  individualId:    varchar("individual_id", { length: 64 }).notNull(),
+  individualIdType:varchar("individual_id_type", { length: 16 }).notNull(),
+  transactionId:   varchar("transaction_id", { length: 64 }).notNull().unique(),
+  otpChannel:      text("otp_channel").array().notNull(),
+  maskedEmail:     varchar("masked_email", { length: 64 }),
+  maskedMobile:    varchar("masked_mobile", { length: 32 }),
+  status:          varchar("status", { length: 32 }).notNull().default("OTP_SENT"),
+  errorCode:       varchar("error_code", { length: 32 }),
+  createdAt:       timestamp("created_at").notNull().defaultNow(),
+}, (t) => ({
+  tenantIdx:       index("mosip_otp_tenant_idx").on(t.tenantId),
+  txnIdx:          index("mosip_otp_txn_idx").on(t.transactionId),
+}));
+
+/** Stores the result of each MOSIP IDA eKYC verification */
+export const mosipEkycSubmissions = pgTable("mosip_ekyc_submissions", {
+  id:              serial("id").primaryKey(),
+  tenantId:        varchar("tenant_id", { length: 64 }).notNull(),
+  individualId:    varchar("individual_id", { length: 64 }).notNull(),
+  individualIdType:varchar("individual_id_type", { length: 16 }).notNull(),
+  transactionId:   varchar("transaction_id", { length: 64 }).notNull().unique(),
+  consentObtained: boolean("consent_obtained").notNull().default(false),
+  requestedAttributes: text("requested_attributes").array().notNull(),
+  kycData:         jsonb("kyc_data"),
+  status:          varchar("status", { length: 32 }).notNull().default("PENDING"),
+  errorCode:       varchar("error_code", { length: 32 }),
+  partnerId:       varchar("partner_id", { length: 64 }),
+  responseTime:    timestamp("response_time"),
+  createdAt:       timestamp("created_at").notNull().defaultNow(),
+  updatedAt:       timestamp("updated_at").notNull().defaultNow(),
+}, (t) => ({
+  tenantIdx:       index("mosip_ekyc_tenant_idx").on(t.tenantId),
+  individualIdx:   index("mosip_ekyc_individual_idx").on(t.individualId),
+  txnIdx:          index("mosip_ekyc_txn_idx").on(t.transactionId),
+}));
+
+/** Tracks eSignet OIDC4VP authorization sessions */
+export const esignetSessions = pgTable("esignet_sessions", {
+  id:              serial("id").primaryKey(),
+  tenantId:        varchar("tenant_id", { length: 64 }).notNull(),
+  clientId:        varchar("client_id", { length: 128 }).notNull(),
+  state:           varchar("state", { length: 128 }).notNull().unique(),
+  nonce:           varchar("nonce", { length: 128 }).notNull(),
+  redirectUri:     text("redirect_uri").notNull(),
+  scope:           text("scope"),
+  acrValues:       text("acr_values"),
+  authorizationUrl:text("authorization_url"),
+  authCode:        varchar("auth_code", { length: 256 }),
+  accessToken:     text("access_token"),
+  idToken:         text("id_token"),
+  tokenExpiresAt:  timestamp("token_expires_at"),
+  status:          varchar("status", { length: 32 }).notNull().default("INITIATED"),
+  createdAt:       timestamp("created_at").notNull().defaultNow(),
+  updatedAt:       timestamp("updated_at").notNull().defaultNow(),
+}, (t) => ({
+  tenantIdx:       index("esignet_tenant_idx").on(t.tenantId),
+  stateIdx:        index("esignet_state_idx").on(t.state),
+}));
+
+/** Records every Verifiable Credential issued via eSignet OIDC4VCI */
+export const verifiableCredentials = pgTable("verifiable_credentials", {
+  id:              serial("id").primaryKey(),
+  tenantId:        varchar("tenant_id", { length: 64 }).notNull(),
+  individualId:    varchar("individual_id", { length: 64 }).notNull(),
+  format:          varchar("format", { length: 32 }).notNull().default("ldp_vc"),
+  credentialData:  jsonb("credential_data").notNull(),
+  cNonce:          varchar("c_nonce", { length: 128 }),
+  issuedAt:        timestamp("issued_at").notNull().defaultNow(),
+  expiresAt:       timestamp("expires_at"),
+  revokedAt:       timestamp("revoked_at"),
+  status:          varchar("status", { length: 32 }).notNull().default("ACTIVE"),
+  partnerId:       varchar("partner_id", { length: 64 }),
+  sessionId:       integer("session_id"),
+}, (t) => ({
+  tenantIdx:       index("vc_tenant_idx").on(t.tenantId),
+  individualIdx:   index("vc_individual_idx").on(t.individualId),
+  statusIdx:       index("vc_status_idx").on(t.status),
+}));
+
+/** Links a G2P disbursement to a MOSIP identity verification outcome */
+export const g2pIdentityVerifications = pgTable("g2p_identity_verifications", {
+  id:              serial("id").primaryKey(),
+  tenantId:        varchar("tenant_id", { length: 64 }).notNull(),
+  beneficiaryId:   varchar("beneficiary_id", { length: 64 }).notNull(),
+  disbursementId:  varchar("disbursement_id", { length: 64 }),
+  individualId:    varchar("individual_id", { length: 64 }).notNull(),
+  individualIdType:varchar("individual_id_type", { length: 16 }).notNull(),
+  transactionId:   varchar("transaction_id", { length: 64 }).notNull().unique(),
+  programId:       varchar("program_id", { length: 64 }),
+  verified:        boolean("verified").notNull().default(false),
+  kycData:         jsonb("kyc_data"),
+  verifiedAt:      timestamp("verified_at"),
+  createdAt:       timestamp("created_at").notNull().defaultNow(),
+}, (t) => ({
+  tenantIdx:       index("g2p_idv_tenant_idx").on(t.tenantId),
+  beneficiaryIdx:  index("g2p_idv_beneficiary_idx").on(t.beneficiaryId),
+  txnIdx:          index("g2p_idv_txn_idx").on(t.transactionId),
+}));

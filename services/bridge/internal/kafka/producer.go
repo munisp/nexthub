@@ -31,7 +31,13 @@ const (
 	TopicCBDCTransfer      = "nexthub.cbdc.transfer.v1"
 	TopicG2PDisbursement   = "nexthub.g2p.disbursement.v1"
 	TopicRemittance        = "nexthub.remittance.transfer.v1"
-	TopicAuditTrail        = "nexthub.audit.trail.v1"
+	TopicAuditTrail           = "nexthub.audit.trail.v1"
+	// MOSIP / eSignet topics
+	TopicMOSIPEKYCResult      = "nexthub.mosip.ekyc.result.v1"
+	TopicMOSIPESignetLogin    = "nexthub.mosip.esignet.login.v1"
+	TopicMOSIPVCIssued        = "nexthub.mosip.vc.issued.v1"
+	TopicMOSIPG2PVerification = "nexthub.mosip.g2p.verification.v1"
+	TopicMOSIPOTPSent         = "nexthub.mosip.otp.sent.v1"
 )
 
 // Envelope wraps every event with standard metadata.

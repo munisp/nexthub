@@ -358,6 +358,16 @@ mlScorerUrl: process.env.ML_SCORER_URL ?? "http://dispute-ml-scorer:8230",
   pixApiKey: process.env.PIX_API_KEY ?? '',
   // DeepFace sidecar
   deepfaceSidecarUrl: process.env.DEEPFACE_SIDECAR_URL ?? 'http://localhost:8001',
+  // ─── MOSIP IDA + eSignet OIDC4VP/OIDC4VCI (Wave 26 — Digital Identity) ────────
+  mosipIdaUrl: process.env.MOSIP_IDA_URL ?? 'https://api.sandbox.mosip.net/idauthentication/v1',
+  mosipIdaPartnerId: process.env.MOSIP_IDA_PARTNER_ID ?? '',
+  mosipIdaApiKey: process.env.MOSIP_IDA_API_KEY ?? '',
+  mosipIdaMispKey: process.env.MOSIP_IDA_MISP_KEY ?? '',
+  esignetUrl: process.env.ESIGNET_URL ?? 'https://api.sandbox.mosip.net/v1/esignet',
+  esignetClientId: process.env.ESIGNET_CLIENT_ID ?? '',
+  esignetClientSecret: process.env.ESIGNET_CLIENT_SECRET ?? '',
+  esignetRedirectUri: process.env.ESIGNET_REDIRECT_URI ?? '',
+  mosipVcIssuerUrl: process.env.MOSIP_VC_ISSUER_URL ?? 'https://api.sandbox.mosip.net/v1/vciplugin',
 };
 
 // Lowercase alias for convenience — use `env` in new code

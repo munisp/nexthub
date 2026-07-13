@@ -23,6 +23,7 @@ import (
 	"github.com/munisp/nexthub/bridge/internal/keycloak"
 	"github.com/munisp/nexthub/bridge/internal/ledger"
 	bMiddleware "github.com/munisp/nexthub/bridge/internal/middleware"
+	"github.com/munisp/nexthub/bridge/internal/mosip"
 	"github.com/munisp/nexthub/bridge/internal/permify"
 	temporalWorker "github.com/munisp/nexthub/bridge/internal/temporal"
 )
@@ -68,12 +69,20 @@ func main() {
 		cfg.JWTSecret,
 	)
 
+	// ── MOSIP / eSignet client ────────────────────────────────────────────────
+	mosipCfg := mosip.ConfigFromEnv()
+	mosipClient, mosipErr := mosip.New(mosipCfg, log)
+	if mosipErr != nil {
+		log.Warn("mosip_client_init_failed", zap.Error(mosipErr))
+		mosipClient = nil // non-fatal — MOSIP endpoints will return 503
+	}
 	// ── HTTP handlers ─────────────────────────────────────────────────────────
 	h := &handlers.Handler{
 		Ledger:   ledgerClient,
 		Kafka:    kafkaProducer,
 		Permify:  permifyClient,
 		Keycloak: keycloakClient,
+		MOSIP:    mosipClient,
 		Log:      log,
 	}
 	if worker != nil {
@@ -188,6 +197,13 @@ func main() {
 		infra.GET("/openappsec/alerts",             h.GetOpenappsecAlerts)
 		// Keycloak
 		infra.POST("/keycloak/provision",           h.KeycloakProvisionUser)
+		// MOSIP IDA eKYC + eSignet OIDC4VP/OIDC4VCI
+		infra.POST("/mosip/otp",                    h.GenerateOTP)
+		infra.POST("/mosip/ekyc",                   h.SubmitEKYC)
+		infra.POST("/mosip/esignet/auth-url",       h.GetESignetAuthURL)
+		infra.POST("/mosip/esignet/token",          h.ExchangeESignetCode)
+		infra.POST("/mosip/vc/issue",               h.IssueVerifiableCredential)
+		infra.POST("/mosip/g2p/verify-beneficiary", h.VerifyG2PBeneficiary)
 		// Kafka direct
 		infra.POST("/kafka/publish",                h.KafkaPublish)
 		// Temporal proxy

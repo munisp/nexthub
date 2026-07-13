@@ -17,6 +17,9 @@ import (
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
 
+	"database/sql"
+	_ "github.com/lib/pq"
+	"github.com/redis/go-redis/v9"
 	"github.com/munisp/nexthub/bridge/internal/config"
 	"github.com/munisp/nexthub/bridge/internal/handlers"
 	"github.com/munisp/nexthub/bridge/internal/kafka"
@@ -81,6 +84,20 @@ func main() {
 	faceBiometricCfg := facebiometric.ConfigFromEnv()
 	faceBiometricClient := facebiometric.New(faceBiometricCfg)
 	log.Info("face_biometric_client_configured", zap.String("url", faceBiometricCfg.BaseURL))
+	// ── PostgreSQL (for partner API key lookups) ──────────────────────────────
+	partnerDB, dbErr := sql.Open("postgres", cfg.DatabaseURL)
+	if dbErr != nil {
+		log.Warn("partner_db_open_failed", zap.Error(dbErr))
+		partnerDB = nil
+	}
+	// ── Redis (for partner key caching + rate limiting) ───────────────────────
+	redisOpts, redisErr := redis.ParseURL(cfg.RedisAddr)
+	var partnerRedis *redis.Client
+	if redisErr != nil {
+		log.Warn("partner_redis_parse_failed", zap.Error(redisErr))
+	} else {
+		partnerRedis = redis.NewClient(redisOpts)
+	}
 
 	// ── HTTP handlers ─────────────────────────────────────────────────────────
 	h := &handlers.Handler{
@@ -233,14 +250,51 @@ func main() {
 		infra.POST("/face/enroll",     h.HandleFaceEnroll)
 		infra.POST("/face/identify",   h.HandleFaceIdentify)
 		infra.POST("/face/name-match", h.HandleNameMatch)
-
+	}
+	// ── Partner Public API (X-API-Key auth + per-key rate limiting) ──────────
+	// Third-party apps, cameras, and integrators use this route group.
+	// Authentication: X-API-Key: nhfb_<key>  or  Authorization: Bearer nhfb_<key>
+	if partnerDB != nil && partnerRedis != nil {
+		partnerAuth := bMiddleware.PartnerAuth(partnerDB, partnerRedis)
+		partner := r.Group("/partner/v1")
+		partner.Use(partnerAuth)
+		{
+			// Connectivity check
+			partner.GET("/face/ping", h.PartnerPing)
+			// Face verification (1:1) — scope: face:verify
+			partner.POST("/face/verify",
+				bMiddleware.RequireScope("face:verify"),
+				h.PartnerFaceVerify)
+			// Liveness / anti-spoofing — scope: face:liveness
+			partner.POST("/face/liveness",
+				bMiddleware.RequireScope("face:liveness"),
+				h.PartnerFaceLiveness)
+			// Quality assessment — scope: face:quality
+			partner.POST("/face/quality",
+				bMiddleware.RequireScope("face:quality"),
+				h.PartnerFaceQuality)
+			// Enrollment — scope: face:enroll
+			partner.POST("/face/enroll",
+				bMiddleware.RequireScope("face:enroll"),
+				h.PartnerFaceEnroll)
+			// 1:N Identification — scope: face:identify
+			partner.POST("/face/identify",
+				bMiddleware.RequireScope("face:identify"),
+				h.PartnerFaceIdentify)
+		}
+	} else {
+		log.Warn("partner_api_disabled", zap.String("reason", "DB or Redis unavailable"))
+	}
+	// ── Kafka + Temporal routes (internal) ──────────────────────────────────
+	infra2 := r.Group("/v1", bMiddleware.InternalKeyAuth(cfg.InternalKey))
+	{
 		// Kafka direct
-		infra.POST("/kafka/publish",                h.KafkaPublish)
+		infra2.POST("/kafka/publish",                h.KafkaPublish)
 		// Temporal proxy
-		infra.POST("/temporal/workflows",                      h.TemporalStartWorkflow)
-		infra.GET("/temporal/workflows/:workflowId",           h.TemporalGetWorkflowStatus)
-		infra.POST("/temporal/workflows/:workflowId/signal",   h.TemporalSignalWorkflow)
-		infra.POST("/temporal/workflows/:workflowId/cancel",   h.TemporalCancelWorkflow)
+		infra2.POST("/temporal/workflows",                      h.TemporalStartWorkflow)
+		infra2.GET("/temporal/workflows/:workflowId",           h.TemporalGetWorkflowStatus)
+		infra2.POST("/temporal/workflows/:workflowId/signal",   h.TemporalSignalWorkflow)
+		infra2.POST("/temporal/workflows/:workflowId/cancel",   h.TemporalCancelWorkflow)
 	}
 
 	// ── HTTP server ───────────────────────────────────────────────────────────

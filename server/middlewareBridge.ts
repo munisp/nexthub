@@ -2581,3 +2581,18 @@ export interface NameMatchResult {
 export async function matchNameViaMiddleware(req: NameMatchRequest): Promise<NameMatchResult | null> {
   return safe('POST', '/v1/face/name-match', req);
 }
+
+// ── Face Biometric Partner API Management ─────────────────────────────────────
+export interface CreatePartnerRequest {
+  name: string; orgType: string; contactEmail: string;
+  website?: string; allowedScopes?: string[];
+}
+export interface CreateApiKeyRequest {
+  partnerId: string; name: string; scopes: string[];
+  rateLimitRpm?: number; environment?: string; expiresAt?: string;
+}
+export interface PartnerApiKeyResult {
+  id: string; partnerId: string; name: string; keyPrefix: string;
+  rawKey: string; scopes: string[]; rateLimitRpm: number;
+  environment: string; expiresAt?: string; createdAt: string;
+}

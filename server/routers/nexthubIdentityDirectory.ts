@@ -12,6 +12,7 @@
  * Language: TypeScript (tRPC v11)
  */
 import { z } from "zod/v4";
+import { createHash, randomBytes } from "node:crypto";
 import { router, protectedProcedure, hubOperatorProcedure } from "../_core/trpc";
 import { cache, TTL } from "../cache";
 import { logger } from "../logger";
@@ -20,6 +21,7 @@ import { db } from "../db";
 import { dictAliases, identityLookups, biometricVerifications } from "../../drizzle/national_switch_schema";
 import {
   faceVerifyLogs, faceLivenessLogs, faceEnrollments, faceIdentifyLogs,
+  facePartners, facePartnerApiKeys, facePartnerUsageLogs,
 } from "../../drizzle/nexthub_schema";
 import {
   verifyFaceViaMiddleware, checkFaceLivenessViaMiddleware,
@@ -858,5 +860,117 @@ export const nexthubIdentityDirectoryRouter = router({
       const result = await matchNameViaMiddleware(input);
       if (!result) throw new Error("Face biometric service unavailable");
       return result;
+    }),
+
+  // ── Partner API Management ─────────────────────────────────────────────────
+  createPartner: hubOperatorProcedure
+    .input(z.object({
+      name:          z.string().min(2),
+      orgType:       z.enum(["commercial", "government", "ngo"]).default("commercial"),
+      contactEmail:  z.string().email(),
+      website:       z.string().url().optional(),
+      allowedScopes: z.array(z.string()).default(["face:verify","face:liveness","face:quality"]),
+    }))
+    .mutation(async ({ input }) => {
+      const id = crypto.randomUUID();
+      await db.insert(facePartners).values({
+        id,
+        name:          input.name,
+        orgType:       input.orgType,
+        contactEmail:  input.contactEmail,
+        website:       input.website ?? null,
+        status:        "active",
+        allowedScopes: JSON.stringify(input.allowedScopes),
+      });
+      return { id, ...input, status: "active" };
+    }),
+
+  listPartners: hubOperatorProcedure
+    .input(z.object({ status: z.string().optional() }))
+    .query(async ({ input }) => {
+      const rows = await db.select().from(facePartners)
+        .orderBy(desc(facePartners.createdAt));
+      return input.status
+        ? rows.filter(r => r.status === input.status)
+        : rows;
+    }),
+
+  suspendPartner: hubOperatorProcedure
+    .input(z.object({ partnerId: z.string() }))
+    .mutation(async ({ input }) => {
+      await db.update(facePartners)
+        .set({ status: "suspended", updatedAt: new Date() })
+        .where(eq(facePartners.id, input.partnerId));
+      return { success: true };
+    }),
+
+  createApiKey: hubOperatorProcedure
+    .input(z.object({
+      partnerId:    z.string(),
+      name:         z.string().min(2),
+      scopes:       z.array(z.string()).default(["face:verify","face:liveness"]),
+      rateLimitRpm: z.number().int().min(0).default(60),
+      environment:  z.enum(["production","sandbox"]).default("production"),
+      expiresAt:    z.string().datetime().optional(),
+    }))
+    .mutation(async ({ input }) => {
+      const rawKey   = "nhfb_" + randomBytes(16).toString("hex");
+      const keyHash  = createHash("sha256").update(rawKey).digest("hex");
+      const keyPrefix = rawKey.slice(0, 10);
+      const id = crypto.randomUUID();
+      await db.insert(facePartnerApiKeys).values({
+        id,
+        partnerId:    input.partnerId,
+        name:         input.name,
+        keyPrefix,
+        keyHash,
+        scopes:       JSON.stringify(input.scopes),
+        rateLimitRpm: input.rateLimitRpm,
+        environment:  input.environment,
+        isActive:     true,
+        expiresAt:    input.expiresAt ? new Date(input.expiresAt) : null,
+      });
+      // rawKey is returned ONCE — never stored in plaintext
+      return { id, keyPrefix, rawKey, scopes: input.scopes, environment: input.environment };
+    }),
+
+  listApiKeys: hubOperatorProcedure
+    .input(z.object({ partnerId: z.string() }))
+    .query(async ({ input }) => {
+      return db.select({
+        id:           facePartnerApiKeys.id,
+        name:         facePartnerApiKeys.name,
+        keyPrefix:    facePartnerApiKeys.keyPrefix,
+        scopes:       facePartnerApiKeys.scopes,
+        rateLimitRpm: facePartnerApiKeys.rateLimitRpm,
+        environment:  facePartnerApiKeys.environment,
+        isActive:     facePartnerApiKeys.isActive,
+        lastUsedAt:   facePartnerApiKeys.lastUsedAt,
+        expiresAt:    facePartnerApiKeys.expiresAt,
+        createdAt:    facePartnerApiKeys.createdAt,
+      }).from(facePartnerApiKeys)
+        .where(eq(facePartnerApiKeys.partnerId, input.partnerId))
+        .orderBy(desc(facePartnerApiKeys.createdAt));
+    }),
+
+  revokeApiKey: hubOperatorProcedure
+    .input(z.object({ keyId: z.string() }))
+    .mutation(async ({ input }) => {
+      await db.update(facePartnerApiKeys)
+        .set({ isActive: false, updatedAt: new Date() })
+        .where(eq(facePartnerApiKeys.id, input.keyId));
+      return { success: true };
+    }),
+
+  partnerUsageSummary: hubOperatorProcedure
+    .input(z.object({
+      partnerId: z.string(),
+      limit:     z.number().int().min(1).max(500).default(100),
+    }))
+    .query(async ({ input }) => {
+      return db.select().from(facePartnerUsageLogs)
+        .where(eq(facePartnerUsageLogs.partnerId, input.partnerId))
+        .orderBy(desc(facePartnerUsageLogs.createdAt))
+        .limit(input.limit);
     }),
 });

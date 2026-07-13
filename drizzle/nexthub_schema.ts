@@ -1638,3 +1638,56 @@ export const faceIdentifyLogs = pgTable("face_identify_logs", {
   identifiedIdx:  index("fil_identified_idx").on(t.identified),
   createdIdx:     index("fil_created_idx").on(t.createdAt),
 }));
+
+// ── Face Biometric Partner API — Partner Registry ─────────────────────────────
+export const facePartners = pgTable("face_partners", {
+  id:            text("id").primaryKey(),
+  name:          text("name").notNull(),
+  orgType:       text("org_type").notNull().default("commercial"),
+  contactEmail:  text("contact_email").notNull(),
+  website:       text("website"),
+  status:        text("status").notNull().default("active"),
+  allowedScopes: text("allowed_scopes").notNull().default('["face:verify","face:liveness","face:quality"]'),
+  createdAt:     timestamp("created_at").defaultNow(),
+  updatedAt:     timestamp("updated_at").defaultNow(),
+}, (t) => ({
+  statusIdx: index("fp_status_idx").on(t.status),
+}));
+
+// ── Face Biometric Partner API — API Keys ─────────────────────────────────────
+export const facePartnerApiKeys = pgTable("face_partner_api_keys", {
+  id:           text("id").primaryKey(),
+  partnerId:    text("partner_id").notNull(),
+  name:         text("name").notNull(),
+  keyPrefix:    text("key_prefix").notNull(),
+  keyHash:      text("key_hash").notNull().unique(),
+  scopes:       text("scopes").notNull().default('["face:verify","face:liveness"]'),
+  rateLimitRpm: integer("rate_limit_rpm").notNull().default(60),
+  environment:  text("environment").notNull().default("production"),
+  isActive:     boolean("is_active").notNull().default(true),
+  lastUsedAt:   timestamp("last_used_at"),
+  expiresAt:    timestamp("expires_at"),
+  createdAt:    timestamp("created_at").defaultNow(),
+  updatedAt:    timestamp("updated_at").defaultNow(),
+}, (t) => ({
+  partnerIdx: index("fpak_partner_idx").on(t.partnerId),
+  hashIdx:    uniqueIndex("fpak_hash_idx").on(t.keyHash),
+  activeIdx:  index("fpak_active_idx").on(t.isActive),
+}));
+
+// ── Face Biometric Partner API — Usage Logs ───────────────────────────────────
+export const facePartnerUsageLogs = pgTable("face_partner_usage_logs", {
+  id:         text("id").primaryKey(),
+  keyId:      text("key_id").notNull(),
+  partnerId:  text("partner_id").notNull(),
+  endpoint:   text("endpoint").notNull(),
+  statusCode: integer("status_code").notNull(),
+  latencyMs:  integer("latency_ms"),
+  requestId:  text("request_id"),
+  ipAddress:  text("ip_address"),
+  createdAt:  timestamp("created_at").defaultNow(),
+}, (t) => ({
+  partnerIdx: index("fpul_partner_idx").on(t.partnerId),
+  keyIdx:     index("fpul_key_idx").on(t.keyId),
+  createdIdx: index("fpul_created_idx").on(t.createdAt),
+}));

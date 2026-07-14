@@ -92,13 +92,29 @@ export const NEXTHUB_KAFKA_TOPICS = {
   PAYGATE_AUDIT:         "paygate.audit.v1",
   PAYGATE_CORRIDOR_VOL:  "paygate.corridor.volume.v1",
   // Face Biometric
-  FACE_BATCH_IDENTIFY_RESULT: "nexthub.face.batch.identify.result.v1",
-  FACE_PAYMENT_ASSERTION:     "nexthub.face.payment.assertion.v1",
+  FACE_VERIFY_RESULT:          "nexthub.face.verify.result.v1",
+  FACE_LIVENESS_RESULT:        "nexthub.face.liveness.result.v1",
+  FACE_ENROLL_RESULT:          "nexthub.face.enroll.result.v1",
+  FACE_IDENTIFY_RESULT:        "nexthub.face.identify.result.v1",
+  FACE_FAILED:                 "nexthub.face.failed.v1",
+  FACE_BATCH_IDENTIFY_RESULT:  "nexthub.face.batch.identify.result.v1",
+  FACE_PAYMENT_ASSERTION:      "nexthub.face.payment.assertion.v1",
+  FACE_FIDELITY_AUDIT:         "nexthub.face.fidelity.audit.v1",
+  FACE_ENROLL_GATED:           "nexthub.face.enroll.gated.v1",
+  // Partner API
+  PARTNER_API_CALL:            "nexthub.partner.api.call.v1",
+  PARTNER_KEY_ISSUED:          "nexthub.partner.key.issued.v1",
+  PARTNER_KEY_REVOKED:         "nexthub.partner.key.revoked.v1",
+  // MOSIP Registration
+  MOSIP_REGISTRATION:          "nexthub.mosip.registration.v1",
+  MOSIP_EKYC_RESULT:           "nexthub.mosip.ekyc.result.v1",
+  MOSIP_OTP_SENT:              "nexthub.mosip.otp.sent.v1",
+  MOSIP_VC_ISSUED:             "nexthub.mosip.vc.issued.v1",
   // NINAuth / NIMC integration topics
-  NINAUTH_CONSENT:            "nexthub.ninauth.consent.v1",
-  NINAUTH_KYC:                "nexthub.ninauth.kyc.verified.v1",
-  NINAUTH_FACE_MATCH:         "nexthub.ninauth.face.match.v1",
-  NINAUTH_VC_VERIFIED:        "nexthub.ninauth.vc.verified.v1",
+  NINAUTH_CONSENT:             "nexthub.ninauth.consent.v1",
+  NINAUTH_KYC:                 "nexthub.ninauth.kyc.verified.v1",
+  NINAUTH_FACE_MATCH:          "nexthub.ninauth.face.match.v1",
+  NINAUTH_VC_VERIFIED:         "nexthub.ninauth.vc.verified.v1",
 } as const;
 
 // ─── Typed event payloads ─────────────────────────────────────────────────────

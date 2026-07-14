@@ -1,27 +1,7 @@
-##############################################################################
-# NextHub — Full Stack Docker Compose
-# ─────────────────────────────────────────────────────────────────────────────
-# Services:
-#   nexthub        — Node.js tRPC/Express server (TypeScript)
-#   bridge         — Go middleware bridge (Temporal, Kafka, Permify, Keycloak)
-#   ledger         — Rust TigerBeetle HTTP sidecar
-#   lakehouse      — Python FastAPI analytics & audit trail
-#   postgres       — PostgreSQL 16 (primary database)
-#   redis          — Redis 7 (idempotency, rate-limit, session cache)
-#   temporal       — Temporal server (workflow orchestration)
-#   temporal-ui    — Temporal Web UI
-#   kafka          — Apache Kafka (event bus)
-#   zookeeper      — Kafka dependency
-#   keycloak       — Identity provider (JWT, roles)
-#   permify        — Fine-grained authorization
-##############################################################################
-
-version: "3.9"
-
+version: '3.9'
 networks:
   nexthub:
     driver: bridge
-
   face-bias-audit:
     build:
       context: ./services/face-bias-audit
@@ -29,90 +9,101 @@ networks:
     container_name: nexthub-face-bias-audit
     restart: unless-stopped
     ports:
-      - "8230:8230"
+    - 8230:8230
     environment:
       DATABASE_URL: ${DATABASE_URL}
       REDIS_URL: redis://redis:6379
       KAFKA_BROKERS: kafka:9092
       BIAS_KAFKA_TOPIC: nexthub.face.bias.event.v1
-      BIAS_AUDIT_PORT: "8230"
-      FAR_ALERT_THRESHOLD: "0.10"
-      BIAS_WINDOW_SECS: "3600"
-      RUST_LOG: "face_bias_audit=info"
+      BIAS_AUDIT_PORT: '8230'
+      FAR_ALERT_THRESHOLD: '0.10'
+      BIAS_WINDOW_SECS: '3600'
+      RUST_LOG: face_bias_audit=info
     depends_on:
-      - postgres
-      - redis
-      - kafka
+    - postgres
+    - redis
+    - kafka
     networks:
-      - nexthub-network
+    - nexthub-network
     healthcheck:
-      test: ["CMD", "curl", "-sf", "http://localhost:8230/health"]
+      test:
+      - CMD
+      - curl
+      - -sf
+      - http://localhost:8230/health
       interval: 30s
       timeout: 5s
       retries: 3
       start_period: 20s
-
 volumes:
-  postgres_data:
-  redis_data:
-  temporal_data:
-  kafka_data:
-  keycloak_data:
-  tigerbeetle_data:
-  face_biometric_models:
-
+  postgres_data: null
+  redis_data: null
+  temporal_data: null
+  kafka_data: null
+  keycloak_data: null
+  tigerbeetle_data: null
+  face_biometric_models: null
+  qdrant_data: null
 services:
-  # ─── Infrastructure ──────────────────────────────────────────────────────────
-
   postgres:
     image: postgres:16-alpine
     restart: unless-stopped
-    networks: [nexthub]
+    networks:
+    - nexthub
     environment:
       POSTGRES_USER: user
       POSTGRES_PASSWORD: pass
       POSTGRES_DB: nexthub_db
     volumes:
-      - postgres_data:/var/lib/postgresql/data
+    - postgres_data:/var/lib/postgresql/data
     ports:
-      - "5432:5432"
+    - 5432:5432
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U user -d nexthub_db"]
+      test:
+      - CMD-SHELL
+      - pg_isready -U user -d nexthub_db
       interval: 10s
       timeout: 5s
       retries: 5
-
   redis:
     image: redis:7-alpine
     restart: unless-stopped
-    networks: [nexthub]
+    networks:
+    - nexthub
     volumes:
-      - redis_data:/data
+    - redis_data:/data
     ports:
-      - "6379:6379"
+    - 6379:6379
     healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
+      test:
+      - CMD
+      - redis-cli
+      - ping
       interval: 10s
       timeout: 5s
       retries: 5
-
   zookeeper:
     image: confluentinc/cp-zookeeper:7.6.0
     restart: unless-stopped
-    networks: [nexthub]
+    networks:
+    - nexthub
     environment:
       ZOOKEEPER_CLIENT_PORT: 2181
       ZOOKEEPER_TICK_TIME: 2000
     healthcheck:
-      test: ["CMD", "bash", "-c", "echo ruok | nc localhost 2181"]
+      test:
+      - CMD
+      - bash
+      - -c
+      - echo ruok | nc localhost 2181
       interval: 10s
       timeout: 5s
       retries: 5
-
   kafka:
     image: confluentinc/cp-kafka:7.6.0
     restart: unless-stopped
-    networks: [nexthub]
+    networks:
+    - nexthub
     depends_on:
       zookeeper:
         condition: service_healthy
@@ -123,21 +114,25 @@ services:
       KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
       KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
       KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
-      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: 'true'
     volumes:
-      - kafka_data:/var/lib/kafka/data
+    - kafka_data:/var/lib/kafka/data
     ports:
-      - "29092:29092"
+    - 29092:29092
     healthcheck:
-      test: ["CMD", "kafka-broker-api-versions", "--bootstrap-server", "localhost:9092"]
+      test:
+      - CMD
+      - kafka-broker-api-versions
+      - --bootstrap-server
+      - localhost:9092
       interval: 15s
       timeout: 10s
       retries: 5
-
   temporal:
     image: temporalio/auto-setup:1.24.2
     restart: unless-stopped
-    networks: [nexthub]
+    networks:
+    - nexthub
     depends_on:
       postgres:
         condition: service_healthy
@@ -149,31 +144,46 @@ services:
       POSTGRES_SEEDS: postgres
       DYNAMIC_CONFIG_FILE_PATH: /etc/temporal/dynamicconfig.yaml
     volumes:
-      - temporal_data:/etc/temporal
+    - temporal_data:/etc/temporal
     ports:
-      - "7233:7233"
+    - 7233:7233
     healthcheck:
-      test: ["CMD", "temporal", "operator", "cluster", "health"]
+      test:
+      - CMD
+      - temporal
+      - operator
+      - cluster
+      - health
       interval: 15s
       timeout: 10s
       retries: 10
-
   temporal-ui:
     image: temporalio/ui:2.26.2
     restart: unless-stopped
-    networks: [nexthub]
+    networks:
+    - nexthub
     depends_on:
-      - temporal
+    - temporal
     environment:
       TEMPORAL_ADDRESS: temporal:7233
       TEMPORAL_CORS_ORIGINS: http://localhost:3001
     ports:
-      - "8080:8080"
-
+    - 8080:8080
+    healthcheck:
+      test:
+      - CMD
+      - curl
+      - -f
+      - http://localhost:8080
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
   keycloak:
     image: quay.io/keycloak/keycloak:24.0
     restart: unless-stopped
-    networks: [nexthub]
+    networks:
+    - nexthub
     depends_on:
       postgres:
         condition: service_healthy
@@ -186,19 +196,21 @@ services:
       KEYCLOAK_ADMIN: admin
       KEYCLOAK_ADMIN_PASSWORD: admin
     volumes:
-      - keycloak_data:/opt/keycloak/data
+    - keycloak_data:/opt/keycloak/data
     ports:
-      - "8180:8080"
+    - 8180:8080
     healthcheck:
-      test: ["CMD-SHELL", "curl -sf http://localhost:8080/health/ready || exit 1"]
+      test:
+      - CMD-SHELL
+      - curl -sf http://localhost:8080/health/ready || exit 1
       interval: 20s
       timeout: 10s
       retries: 10
-
   permify:
     image: ghcr.io/permify/permify:v0.9.6
     restart: unless-stopped
-    networks: [nexthub]
+    networks:
+    - nexthub
     command: serve
     environment:
       PERMIFY_DATABASE_ENGINE: postgres
@@ -206,39 +218,49 @@ services:
       PERMIFY_SERVER_HTTP_PORT: 3476
       PERMIFY_SERVER_GRPC_PORT: 3478
     ports:
-      - "3476:3476"
-      - "3478:3478"
+    - 3476:3476
+    - 3478:3478
     depends_on:
       postgres:
         condition: service_healthy
-
-  # ─── Application Services ────────────────────────────────────────────────────
-
+    healthcheck:
+      test:
+      - CMD
+      - curl
+      - -f
+      - http://localhost:3476/healthz
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
   ledger:
     build:
       context: ./services/ledger
       dockerfile: Dockerfile
     restart: unless-stopped
-    networks: [nexthub]
+    networks:
+    - nexthub
     environment:
-      LEDGER_PORT: "8090"
+      LEDGER_PORT: '8090'
       LEDGER_DATA_DIR: /data/tigerbeetle
     volumes:
-      - tigerbeetle_data:/data/tigerbeetle
+    - tigerbeetle_data:/data/tigerbeetle
     ports:
-      - "8090:8090"
+    - 8090:8090
     healthcheck:
-      test: ["CMD-SHELL", "curl -sf http://localhost:8090/health || exit 1"]
+      test:
+      - CMD-SHELL
+      - curl -sf http://localhost:8090/health || exit 1
       interval: 10s
       timeout: 5s
       retries: 5
-
   bridge:
     build:
       context: ./services/bridge
       dockerfile: Dockerfile
     restart: unless-stopped
-    networks: [nexthub]
+    networks:
+    - nexthub
     depends_on:
       postgres:
         condition: service_healthy
@@ -251,7 +273,7 @@ services:
       ledger:
         condition: service_healthy
     environment:
-      BRIDGE_PORT: "8081"
+      BRIDGE_PORT: '8081'
       DATABASE_URL: postgres://user:pass@postgres:5432/nexthub_db?sslmode=disable
       REDIS_URL: redis://redis:6379
       KAFKA_BROKERS: kafka:9092
@@ -263,74 +285,88 @@ services:
       LEDGER_URL: http://ledger:8090
       INTERNAL_API_KEY: ${NEXTHUB_INTEGRATION_API_KEY:-dev-integration-key}
       FACE_BIOMETRIC_URL: http://face-biometric:8220
-      FACE_VERIFY_THRESHOLD: "0.40"
-      FACE_LIVENESS_THRESHOLD: "0.60"
-      FACE_QUALITY_MIN_SCORE: "0.50"
+      FACE_VERIFY_THRESHOLD: '0.40'
+      FACE_LIVENESS_THRESHOLD: '0.60'
+      FACE_QUALITY_MIN_SCORE: '0.50'
     ports:
-      - "8081:8081"
+    - 8081:8081
     healthcheck:
-      test: ["CMD-SHELL", "curl -sf http://localhost:8081/health || exit 1"]
+      test:
+      - CMD-SHELL
+      - curl -sf http://localhost:8081/health || exit 1
       interval: 10s
       timeout: 5s
       retries: 5
-
   lakehouse:
     build:
       context: ./services/lakehouse
       dockerfile: Dockerfile
     restart: unless-stopped
-    networks: [nexthub]
+    networks:
+    - nexthub
     depends_on:
       postgres:
         condition: service_healthy
     environment:
-      LAKEHOUSE_PORT: "8082"
+      LAKEHOUSE_PORT: '8082'
       DATABASE_URL: postgresql://user:pass@postgres:5432/nexthub_db
     ports:
-      - "8082:8082"
+    - 8082:8082
     healthcheck:
-      test: ["CMD-SHELL", "curl -sf http://localhost:8082/health || exit 1"]
+      test:
+      - CMD-SHELL
+      - curl -sf http://localhost:8082/health || exit 1
       interval: 10s
       timeout: 5s
       retries: 5
-
   face-biometric:
     build:
       context: ./services/face-biometric
       dockerfile: Dockerfile
     restart: unless-stopped
     ports:
-      - "8220:8220"
+    - 8220:8220
     environment:
       REDIS_URL: redis://redis:6379
       KAFKA_BROKERS: kafka:9092
       INSIGHTFACE_MODEL: buffalo_l
-      FACE_VERIFY_THRESHOLD: "0.40"
-      LIVENESS_THRESHOLD: "0.60"
-      QUALITY_MIN_SCORE: "0.50"
+      FACE_VERIFY_THRESHOLD: '0.40'
+      LIVENESS_THRESHOLD: '0.60'
+      QUALITY_MIN_SCORE: '0.50'
       LIVENESS_MODEL_PATH: /app/models/silent_face_anti_spoof.onnx
-      PORT: "8220"
+      PORT: '8220'
+      QDRANT_URL: http://qdrant:6333
+      BIAS_AUDIT_SERVICE_URL: http://face-bias-audit:8230
     volumes:
-      - face_biometric_models:/app/models
+    - face_biometric_models:/app/models
     depends_on:
       redis:
         condition: service_healthy
       kafka:
         condition: service_healthy
-    networks: [nexthub]
+      qdrant:
+        condition: service_healthy
+      face-bias-audit:
+        condition: service_healthy
+    networks:
+    - nexthub
     healthcheck:
-      test: ["CMD", "curl", "-sf", "http://localhost:8220/health"]
+      test:
+      - CMD
+      - curl
+      - -sf
+      - http://localhost:8220/health
       interval: 15s
       timeout: 10s
       retries: 5
       start_period: 60s
-
   nexthub:
     build:
       context: .
       dockerfile: Dockerfile
     restart: unless-stopped
-    networks: [nexthub]
+    networks:
+    - nexthub
     depends_on:
       postgres:
         condition: service_healthy
@@ -345,17 +381,73 @@ services:
       JWT_SECRET: ${JWT_SECRET:-nexthub-dev-secret-32chars-minimum}
       REGULATOR_JWT_SECRET: ${REGULATOR_JWT_SECRET:-regulator-dev-secret-32chars}
       NEXTHUB_INTEGRATION_API_KEY: ${NEXTHUB_INTEGRATION_API_KEY:-dev-integration-key}
-      PORT: "3001"
+      PORT: '3001'
       MIDDLEWARE_BRIDGE_URL: http://bridge:8081
       MIDDLEWARE_INTERNAL_KEY: ${NEXTHUB_INTEGRATION_API_KEY:-dev-integration-key}
       LAKEHOUSE_URL: http://lakehouse:8082
       REDIS_URL: redis://redis:6379
       FACE_BIOMETRIC_URL: http://face-biometric:8220
     ports:
-      - "3001:3001"
-      - "50051:50051"
+    - 3001:3001
+    - 50051:50051
     healthcheck:
-      test: ["CMD-SHELL", "curl -sf http://localhost:3001/api/trpc || exit 1"]
+      test:
+      - CMD-SHELL
+      - curl -sf http://localhost:3001/api/trpc || exit 1
       interval: 15s
       timeout: 10s
       retries: 5
+  qdrant:
+    image: qdrant/qdrant:v1.9.0
+    container_name: nexthub-qdrant
+    restart: unless-stopped
+    ports:
+    - 6333:6333
+    - 6334:6334
+    volumes:
+    - qdrant_data:/qdrant/storage
+    environment:
+      QDRANT__SERVICE__HTTP_PORT: 6333
+      QDRANT__SERVICE__GRPC_PORT: 6334
+    healthcheck:
+      test:
+      - CMD
+      - curl
+      - -f
+      - http://localhost:6333/healthz
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    networks:
+    - nexthub-net
+  face-bias-audit:
+    build:
+      context: ./services/face-bias-audit
+      dockerfile: Dockerfile
+    container_name: nexthub-face-bias-audit
+    restart: unless-stopped
+    ports:
+    - 8230:8230
+    environment:
+      DATABASE_URL: postgresql://nexthub:password@postgres:5432/nexthub_db
+      REDIS_URL: redis://redis:6379
+      RUST_LOG: info
+      PORT: '8230'
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test:
+      - CMD
+      - curl
+      - -f
+      - http://localhost:8230/health
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    networks:
+    - nexthub-net

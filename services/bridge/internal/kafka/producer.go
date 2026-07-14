@@ -55,6 +55,11 @@ const (
 	// Photo Fidelity Pipeline
 	TopicFaceFidelityAudit    = "nexthub.face.fidelity.audit.v1"
 	TopicFaceEnrollGated      = "nexthub.face.enroll.gated.v1"
+// Partner API audit topics
+TopicPartnerAPICall        = "nexthub.partner.api.call.v1"
+TopicPartnerKeyIssued      = "nexthub.partner.key.issued.v1"
+TopicPartnerKeyRevoked     = "nexthub.partner.key.revoked.v1"
+
 )
 
 // Envelope wraps every event with standard metadata.

@@ -26,6 +26,7 @@ import (
 	"github.com/munisp/nexthub/bridge/internal/keycloak"
 	"github.com/munisp/nexthub/bridge/internal/ledger"
 	bMiddleware "github.com/munisp/nexthub/bridge/internal/middleware"
+	"github.com/munisp/nexthub/bridge/internal/biasaudit"
 	"github.com/munisp/nexthub/bridge/internal/facebiometric"
 	"github.com/munisp/nexthub/bridge/internal/mosip"
 	"github.com/munisp/nexthub/bridge/internal/permify"
@@ -84,6 +85,10 @@ func main() {
 	faceBiometricCfg := facebiometric.ConfigFromEnv()
 	faceBiometricClient := facebiometric.New(faceBiometricCfg)
 	log.Info("face_biometric_client_configured", zap.String("url", faceBiometricCfg.BaseURL))
+	// ── Bias Audit client (Rust face-bias-audit microservice) ─────────────────
+	biasAuditCfg := biasaudit.ConfigFromEnv()
+	biasAuditClient := biasaudit.New(biasAuditCfg)
+	log.Info("bias_audit_client_configured", zap.String("url", biasAuditCfg.BaseURL))
 	// ── PostgreSQL (for partner API key lookups) ──────────────────────────────
 	partnerDB, dbErr := sql.Open("postgres", cfg.DatabaseURL)
 	if dbErr != nil {
@@ -107,6 +112,7 @@ func main() {
 		Keycloak:      keycloakClient,
 		MOSIP:         mosipClient,
 		FaceBiometric: faceBiometricClient,
+		BiasAudit:     biasAuditClient,
 		Log:           log,
 	}
 	if worker != nil {
@@ -258,7 +264,17 @@ infra.POST("/face/liveness/active/verify", h.HandleActiveLivenessVerify)
 infra.POST("/face/deepfake",               h.HandleDeepfakeDetect)
 infra.POST("/face/attributes",             h.HandleFaceAttributes)
 infra.POST("/face/video-verify",           h.HandleVideoVerify)
-infra.GET("/face/bias-report",             h.HandleBiasReport)
+// Bias Audit relay — proxies to Rust face-bias-audit service (:8230)
+infra.POST("/bias-audit/ingest",                h.HandleBiasIngest)
+infra.GET("/bias-audit/report",                 h.HandleBiasReport)
+infra.GET("/bias-audit/report/:op",             h.HandleBiasReportByOp)
+infra.GET("/bias-audit/alerts",                 h.HandleBiasAlerts)
+infra.POST("/bias-audit/ninauth/consent",       h.HandleNINAuthConsentAudit)
+infra.POST("/bias-audit/ninauth/face-match",    h.HandleNINAuthFaceMatchAudit)
+infra.POST("/bias-audit/ninauth/vc",            h.HandleNINAuthVCAudit)
+infra.POST("/bias-audit/fidelity/ingest",       h.HandleFidelityAuditIngest)
+infra.GET("/bias-audit/fidelity/report",        h.HandleFidelityAuditReport)
+infra.GET("/bias-audit/fidelity/compliance",    h.HandleFidelityAuditCompliance)
 
 // NINAuth / NIMC Integration
 // Flow 1: OIDC Consent (citizen-initiated)

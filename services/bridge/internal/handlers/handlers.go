@@ -10,10 +10,11 @@ import (
 	"go.temporal.io/sdk/client"
 	"go.uber.org/zap"
 
+	"github.com/munisp/nexthub/bridge/internal/biasaudit"
+	"github.com/munisp/nexthub/bridge/internal/facebiometric"
 	"github.com/munisp/nexthub/bridge/internal/kafka"
 	"github.com/munisp/nexthub/bridge/internal/keycloak"
 	"github.com/munisp/nexthub/bridge/internal/ledger"
-	"github.com/munisp/nexthub/bridge/internal/facebiometric"
 	"github.com/munisp/nexthub/bridge/internal/mosip"
 	"github.com/munisp/nexthub/bridge/internal/permify"
 	"github.com/munisp/nexthub/bridge/internal/workflows"
@@ -28,6 +29,7 @@ type Handler struct {
 	Keycloak      *keycloak.Client
 	MOSIP         *mosip.Client
 	FaceBiometric *facebiometric.Client
+	BiasAudit     *biasaudit.Client
 	Log           *zap.Logger
 }
 

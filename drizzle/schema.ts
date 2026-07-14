@@ -5747,3 +5747,1033 @@ export const regulatorSessions = pgTable("regulator_sessions", {
   createdAt: timestamp("created_at").defaultNow(),
 });
 
+
+
+// ─── Migrated from nexthub_schema.ts ────────────────────────────────────────
+
+export const regulatorDocuments = pgTable("regulator_documents", {
+  id: text("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  regulatorId: text("regulator_id").notNull(),
+  documentType: text("document_type").notNull(),
+  filename: text("filename").notNull(),
+  mimeType: text("mime_type").notNull(),
+  s3Key: text("s3_key").notNull(),
+  status: text("status").notNull().default("pending_upload"),
+  uploadedAt: timestamp("uploaded_at"),
+  reviewedAt: timestamp("reviewed_at"),
+  reviewNote: text("review_note"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const ndcBreachEvents = pgTable("ndc_breach_events", {
+  id: text("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  dfspId: text("dfsp_id").notNull(),
+  dfspName: text("dfsp_name").notNull(),
+  currentPositionKobo: integer("current_position_kobo").notNull(),
+  ndcLimitKobo: integer("ndc_limit_kobo").notNull(),
+  breachPercentage: real("breach_percentage").notNull(),
+  severity: text("severity"),
+  windowId: text("window_id"),
+  resolvedAt: timestamp("resolved_at"),
+  resolution: text("resolution"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const dfspNdcLimits = pgTable("dfsp_ndc_limits", {
+  id: text("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  dfspId: text("dfsp_id").notNull().unique(),
+  dfspName: text("dfsp_name").notNull(),
+  ndcLimitKobo: integer("ndc_limit_kobo").notNull().default(0),
+  alertThresholdPct: real("alert_threshold_pct").notNull().default(80),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+
+// ── Wave 230: JWS Keys + mTLS Certificates ───────────────────────────────────
+
+export const jwsKeys = pgTable("jws_keys", {
+  id: text("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  dfspId: text("dfsp_id").notNull(),
+  algorithm: text("algorithm").notNull().default("PS256"),
+  keyType: text("key_type").notNull().default("RSA"),
+  publicKeyPem: text("public_key_pem").notNull(),
+  privateKeyPem: text("private_key_pem"),
+  isActive: boolean("is_active").notNull().default(true),
+  createdAt: timestamp("created_at").defaultNow(),
+  expiresAt: timestamp("expires_at"),
+  revokedAt: timestamp("revoked_at"),
+  revokedBy: text("revoked_by"),
+});
+export type JwsKey = typeof jwsKeys.$inferSelect;
+
+export const mtlsCertificates = pgTable("mtls_certificates", {
+  id: text("id").primaryKey(),
+  dfspId: text("dfsp_id").notNull(),
+  certType: text("cert_type").notNull(),
+  commonName: text("common_name").notNull(),
+  certificatePem: text("certificate_pem").notNull(),
+  privateKeyPem: text("private_key_pem"),
+  serialNumber: text("serial_number"),
+  issuedAt: timestamp("issued_at").notNull(),
+  expiresAt: timestamp("expires_at").notNull(),
+  status: text("status").notNull().default("ACTIVE"),
+  revokedAt: timestamp("revoked_at"),
+  revocationReason: text("revocation_reason"),
+});
+export type MtlsCertificate = typeof mtlsCertificates.$inferSelect;
+
+// ── Wave 240: Temporal Workflow Tracking ─────────────────────────────────────
+
+export const temporalWorkflowInstances = pgTable("temporal_workflow_instances", {
+  id: text("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  workflowId: text("workflow_id").notNull().unique(),
+  runId: text("run_id"),
+  workflowType: text("workflow_type").notNull(),
+  status: text("status").notNull().default("RUNNING"),
+  input: text("input"),
+  result: text("result"),
+  errorMessage: text("error_message"),
+  startedAt: timestamp("started_at").defaultNow(),
+  completedAt: timestamp("completed_at"),
+  entityId: text("entity_id"),
+  entityType: text("entity_type"),
+});
+export type TemporalWorkflowInstance = typeof temporalWorkflowInstances.$inferSelect;
+
+// ── Wave 250: Liquidity & Collateral ─────────────────────────────────────────
+
+export const collateralDeposits = pgTable("collateral_deposits", {
+  id: text("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  dfspId: text("dfsp_id").notNull(),
+  amountKobo: integer("amount_kobo").notNull(),
+  currency: text("currency").notNull().default("NGN"),
+  bankRef: text("bank_ref"),
+  status: text("status").notNull().default("PENDING"),
+  ledgerEntryId: text("ledger_entry_id"),
+  workflowId: text("workflow_id"),
+  confirmedAt: timestamp("confirmed_at"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+export type CollateralDeposit = typeof collateralDeposits.$inferSelect;
+
+export const liquidityAlerts = pgTable("liquidity_alerts", {
+  id: text("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  dfspId: text("dfsp_id").notNull(),
+  currency: text("currency").notNull().default("NGN"),
+  positionKobo: integer("position_kobo").notNull(),
+  ndcLimitKobo: integer("ndc_limit_kobo").notNull(),
+  utilisationPct: real("utilisation_pct").notNull(),
+  alertLevel: text("alert_level").notNull(),
+  resolvedAt: timestamp("resolved_at"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+export type LiquidityAlert = typeof liquidityAlerts.$inferSelect;
+
+export const settlementCorridors = pgTable("settlement_corridors", {
+  id: text("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  corridorId: text("corridor_id").notNull().unique(),
+  sourceCurrency: text("source_currency").notNull(),
+  targetCurrency: text("target_currency").notNull(),
+  fxRate: real("fx_rate").notNull().default(1),
+  status: text("status").notNull().default("ACTIVE"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+export type SettlementCorridor = typeof settlementCorridors.$inferSelect;
+
+// ── Wave 260: Audit Trail (Lakehouse sync) ────────────────────────────────────
+
+export const auditTrailEvents = pgTable("audit_trail_events", {
+  id: text("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  eventType: text("event_type").notNull(),
+  actorId: text("actor_id").notNull(),
+  actorType: text("actor_type").notNull(),
+  resourceType: text("resource_type").notNull(),
+  resourceId: text("resource_id").notNull(),
+  action: text("action").notNull(),
+  outcome: text("outcome").notNull(),
+  metadata: text("metadata"),
+  ipAddress: text("ip_address"),
+  sessionId: text("session_id"),
+  lakehouseSynced: boolean("lakehouse_synced").notNull().default(false),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+export type AuditTrailEvent = typeof auditTrailEvents.$inferSelect;
+
+// ── Infrastructure: APISIX Gateway Route Registry ────────────────────────────
+
+export const apisixRoutes = pgTable("apisix_routes", {
+  id: text("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  routeId: text("route_id").notNull().unique(),
+  dfspId: text("dfsp_id"),
+  name: text("name").notNull(),
+  uri: text("uri").notNull(),
+  methods: text("methods").array().notNull().default(["GET", "POST"]),
+  upstreamUrl: text("upstream_url").notNull(),
+  plugins: text("plugins"),
+  status: text("status").notNull().default("ACTIVE"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+export type ApisixRoute = typeof apisixRoutes.$inferSelect;
+
+export const apisixConsumers = pgTable("apisix_consumers", {
+  id: text("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  username: text("username").notNull().unique(),
+  dfspId: text("dfsp_id"),
+  plugins: text("plugins"),
+  status: text("status").notNull().default("ACTIVE"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+export type ApisixConsumer = typeof apisixConsumers.$inferSelect;
+
+// ── Infrastructure: Dapr State & Pub/Sub Audit ────────────────────────────────
+
+export const daprStateEntries = pgTable("dapr_state_entries", {
+  id: text("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  storeComponent: text("store_component").notNull().default("statestore"),
+  stateKey: text("state_key").notNull(),
+  etag: text("etag"),
+  value: text("value"),
+  ttlSeconds: integer("ttl_seconds"),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+export type DaprStateEntry = typeof daprStateEntries.$inferSelect;
+
+export const daprPubSubEvents = pgTable("dapr_pubsub_events", {
+  id: text("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  pubsubComponent: text("pubsub_component").notNull().default("pubsub"),
+  topic: text("topic").notNull(),
+  eventType: text("event_type").notNull(),
+  dataContentType: text("data_content_type").notNull().default("application/json"),
+  data: text("data"),
+  traceId: text("trace_id"),
+  status: text("status").notNull().default("PUBLISHED"),
+  publishedAt: timestamp("published_at").defaultNow(),
+});
+export type DaprPubSubEvent = typeof daprPubSubEvents.$inferSelect;
+
+// ── Infrastructure: OpenAppSec WAF Policies & Alerts ─────────────────────────
+
+export const openappsecPolicies = pgTable("openappsec_policies", {
+  id: text("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  policyId: text("policy_id").notNull().unique(),
+  name: text("name").notNull(),
+  mode: text("mode").notNull().default("prevent"),
+  assetUrls: text("asset_urls").array().notNull().default([]),
+  practiceConfig: text("practice_config"),
+  trustedSources: text("trusted_sources"),
+  status: text("status").notNull().default("ACTIVE"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+export type OpenappsecPolicy = typeof openappsecPolicies.$inferSelect;
+
+export const openappsecAlerts = pgTable("openappsec_alerts", {
+  id: text("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  alertId: text("alert_id").notNull().unique(),
+  policyId: text("policy_id"),
+  severity: text("severity").notNull().default("medium"),
+  attackType: text("attack_type").notNull(),
+  sourceIp: text("source_ip"),
+  targetUri: text("target_uri"),
+  requestId: text("request_id"),
+  payload: text("payload"),
+  action: text("action").notNull().default("blocked"),
+  resolvedAt: timestamp("resolved_at"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+export type OpenappsecAlert = typeof openappsecAlerts.$inferSelect;
+
+// ── Infrastructure: Fluvio Stream Topic Registry ──────────────────────────────
+
+export const fluvioTopics = pgTable("fluvio_topics", {
+  id: text("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  topicName: text("topic_name").notNull().unique(),
+  partitions: integer("partitions").notNull().default(1),
+  retentionHours: integer("retention_hours").notNull().default(24),
+  description: text("description"),
+  status: text("status").notNull().default("ACTIVE"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+export type FluvioTopic = typeof fluvioTopics.$inferSelect;
+
+export const fluvioStreamEvents = pgTable("fluvio_stream_events", {
+  id: text("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  topic: text("topic").notNull(),
+  partitionKey: text("partition_key"),
+  payload: text("payload").notNull(),
+  offset: integer("offset"),
+  status: text("status").notNull().default("PUBLISHED"),
+  publishedAt: timestamp("published_at").defaultNow(),
+});
+export type FluvioStreamEvent = typeof fluvioStreamEvents.$inferSelect;
+
+// ── Infrastructure: Permify Policy Relationship Audit ─────────────────────────
+
+export const permifyRelationships = pgTable("permify_relationships", {
+  id: text("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  tenantId: text("tenant_id").notNull(),
+  entityType: text("entity_type").notNull(),
+  entityId: text("entity_id").notNull(),
+  relation: text("relation").notNull(),
+  subjectType: text("subject_type").notNull(),
+  subjectId: text("subject_id").notNull(),
+  snapToken: text("snap_token"),
+  operation: text("operation").notNull().default("WRITE"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+export type PermifyRelationship = typeof permifyRelationships.$inferSelect;
+
+export const permifyPermissionChecks = pgTable("permify_permission_checks", {
+  id: text("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  tenantId: text("tenant_id").notNull(),
+  subjectType: text("subject_type").notNull(),
+  subjectId: text("subject_id").notNull(),
+  permission: text("permission").notNull(),
+  resourceType: text("resource_type").notNull(),
+  resourceId: text("resource_id").notNull(),
+  allowed: boolean("allowed").notNull(),
+  reason: text("reason"),
+  checkedAt: timestamp("checked_at").defaultNow(),
+});
+export type PermifyPermissionCheck = typeof permifyPermissionChecks.$inferSelect;
+
+// ── Infrastructure: Keycloak User Provisioning Audit ─────────────────────────
+
+export const keycloakProvisioningLog = pgTable("keycloak_provisioning_log", {
+  id: text("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  keycloakUserId: text("keycloak_user_id"),
+  username: text("username").notNull(),
+  email: text("email"),
+  realm: text("realm").notNull().default("nexthub"),
+  roles: text("roles").array().notNull().default([]),
+  linkedEntityType: text("linked_entity_type"),
+  linkedEntityId: text("linked_entity_id"),
+  operation: text("operation").notNull().default("CREATE"),
+  status: text("status").notNull().default("SUCCESS"),
+  errorMessage: text("error_message"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+export type KeycloakProvisioningLog = typeof keycloakProvisioningLog.$inferSelect;
+
+// ── Infrastructure: Lakehouse Sync Queue ──────────────────────────────────────
+
+export const lakehouseSyncQueue = pgTable("lakehouse_sync_queue", {
+  id: text("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  eventType: text("event_type").notNull(),
+  sourceTable: text("source_table").notNull(),
+  sourceId: text("source_id").notNull(),
+  payload: text("payload").notNull(),
+  retries: integer("retries").notNull().default(0),
+  status: text("status").notNull().default("PENDING"),
+  syncedAt: timestamp("synced_at"),
+  errorMessage: text("error_message"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+export type LakehouseSyncQueue = typeof lakehouseSyncQueue.$inferSelect;
+
+// ── Infrastructure: Redis Cache Invalidation Log ──────────────────────────────
+
+export const redisCacheInvalidations = pgTable("redis_cache_invalidations", {
+  id: text("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  namespace: text("namespace").notNull(),
+  cacheKey: text("cache_key").notNull(),
+  reason: text("reason"),
+  invalidatedBy: text("invalidated_by"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+export type RedisCacheInvalidation = typeof redisCacheInvalidations.$inferSelect;
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// MOSIP IDENTITY — eKYC, eSignet OIDC4VP/OIDC4VCI, Verifiable Credentials
+// ═══════════════════════════════════════════════════════════════════════════════
+
+/** Audit log of every MOSIP OTP generation request */
+
+export const mosipOtpLog = pgTable("mosip_otp_log", {
+  id:              serial("id").primaryKey(),
+  tenantId:        varchar("tenant_id", { length: 64 }).notNull(),
+  individualId:    varchar("individual_id", { length: 64 }).notNull(),
+  individualIdType:varchar("individual_id_type", { length: 16 }).notNull(),
+  transactionId:   varchar("transaction_id", { length: 64 }).notNull().unique(),
+  otpChannel:      text("otp_channel").array().notNull(),
+  maskedEmail:     varchar("masked_email", { length: 64 }),
+  maskedMobile:    varchar("masked_mobile", { length: 32 }),
+  status:          varchar("status", { length: 32 }).notNull().default("OTP_SENT"),
+  errorCode:       varchar("error_code", { length: 32 }),
+  createdAt:       timestamp("created_at").notNull().defaultNow(),
+}, (t) => ({
+  tenantIdx:       index("mosip_otp_tenant_idx").on(t.tenantId),
+  txnIdx:          index("mosip_otp_txn_idx").on(t.transactionId),
+}));
+
+/** Stores the result of each MOSIP IDA eKYC verification */
+
+export const mosipEkycSubmissions = pgTable("mosip_ekyc_submissions", {
+  id:              serial("id").primaryKey(),
+  tenantId:        varchar("tenant_id", { length: 64 }).notNull(),
+  individualId:    varchar("individual_id", { length: 64 }).notNull(),
+  individualIdType:varchar("individual_id_type", { length: 16 }).notNull(),
+  transactionId:   varchar("transaction_id", { length: 64 }).notNull().unique(),
+  consentObtained: boolean("consent_obtained").notNull().default(false),
+  requestedAttributes: text("requested_attributes").array().notNull(),
+  kycData:         jsonb("kyc_data"),
+  status:          varchar("status", { length: 32 }).notNull().default("PENDING"),
+  errorCode:       varchar("error_code", { length: 32 }),
+  partnerId:       varchar("partner_id", { length: 64 }),
+  responseTime:    timestamp("response_time"),
+  createdAt:       timestamp("created_at").notNull().defaultNow(),
+  updatedAt:       timestamp("updated_at").notNull().defaultNow(),
+}, (t) => ({
+  tenantIdx:       index("mosip_ekyc_tenant_idx").on(t.tenantId),
+  individualIdx:   index("mosip_ekyc_individual_idx").on(t.individualId),
+  txnIdx:          index("mosip_ekyc_txn_idx").on(t.transactionId),
+}));
+
+/** Tracks eSignet OIDC4VP authorization sessions */
+
+export const esignetSessions = pgTable("esignet_sessions", {
+  id:              serial("id").primaryKey(),
+  tenantId:        varchar("tenant_id", { length: 64 }).notNull(),
+  clientId:        varchar("client_id", { length: 128 }).notNull(),
+  state:           varchar("state", { length: 128 }).notNull().unique(),
+  nonce:           varchar("nonce", { length: 128 }).notNull(),
+  redirectUri:     text("redirect_uri").notNull(),
+  scope:           text("scope"),
+  acrValues:       text("acr_values"),
+  authorizationUrl:text("authorization_url"),
+  authCode:        varchar("auth_code", { length: 256 }),
+  accessToken:     text("access_token"),
+  idToken:         text("id_token"),
+  tokenExpiresAt:  timestamp("token_expires_at"),
+  status:          varchar("status", { length: 32 }).notNull().default("INITIATED"),
+  createdAt:       timestamp("created_at").notNull().defaultNow(),
+  updatedAt:       timestamp("updated_at").notNull().defaultNow(),
+}, (t) => ({
+  tenantIdx:       index("esignet_tenant_idx").on(t.tenantId),
+  stateIdx:        index("esignet_state_idx").on(t.state),
+}));
+
+/** Records every Verifiable Credential issued via eSignet OIDC4VCI */
+
+export const verifiableCredentials = pgTable("verifiable_credentials", {
+  id:              serial("id").primaryKey(),
+  tenantId:        varchar("tenant_id", { length: 64 }).notNull(),
+  individualId:    varchar("individual_id", { length: 64 }).notNull(),
+  format:          varchar("format", { length: 32 }).notNull().default("ldp_vc"),
+  credentialData:  jsonb("credential_data").notNull(),
+  cNonce:          varchar("c_nonce", { length: 128 }),
+  issuedAt:        timestamp("issued_at").notNull().defaultNow(),
+  expiresAt:       timestamp("expires_at"),
+  revokedAt:       timestamp("revoked_at"),
+  status:          varchar("status", { length: 32 }).notNull().default("ACTIVE"),
+  partnerId:       varchar("partner_id", { length: 64 }),
+  sessionId:       integer("session_id"),
+}, (t) => ({
+  tenantIdx:       index("vc_tenant_idx").on(t.tenantId),
+  individualIdx:   index("vc_individual_idx").on(t.individualId),
+  statusIdx:       index("vc_status_idx").on(t.status),
+}));
+
+/** Links a G2P disbursement to a MOSIP identity verification outcome */
+
+export const g2pIdentityVerifications = pgTable("g2p_identity_verifications", {
+  id:              serial("id").primaryKey(),
+  tenantId:        varchar("tenant_id", { length: 64 }).notNull(),
+  beneficiaryId:   varchar("beneficiary_id", { length: 64 }).notNull(),
+  disbursementId:  varchar("disbursement_id", { length: 64 }),
+  individualId:    varchar("individual_id", { length: 64 }).notNull(),
+  individualIdType:varchar("individual_id_type", { length: 16 }).notNull(),
+  transactionId:   varchar("transaction_id", { length: 64 }).notNull().unique(),
+  programId:       varchar("program_id", { length: 64 }),
+  verified:        boolean("verified").notNull().default(false),
+  kycData:         jsonb("kyc_data"),
+  verifiedAt:      timestamp("verified_at"),
+  createdAt:       timestamp("created_at").notNull().defaultNow(),
+}, (t) => ({
+  tenantIdx:       index("g2p_idv_tenant_idx").on(t.tenantId),
+  beneficiaryIdx:  index("g2p_idv_beneficiary_idx").on(t.beneficiaryId),
+  txnIdx:          index("g2p_idv_txn_idx").on(t.transactionId),
+}));
+
+// ─── MOSIP CITIZEN REGISTRATION PIPELINE ─────────────────────────────────────
+
+/** Tracks citizen pre-registration applications (Stage 1 — AID issuance) */
+
+export const mosipRegistrations = pgTable("mosip_registrations", {
+  id:                serial("id").primaryKey(),
+  tenantId:          varchar("tenant_id", { length: 64 }).notNull(),
+  preRegistrationId: varchar("pre_registration_id", { length: 64 }).notNull().unique(),
+  createdBy:         varchar("created_by", { length: 128 }).notNull(),
+  langCode:          varchar("lang_code", { length: 8 }).notNull().default("eng"),
+  statusCode:        varchar("status_code", { length: 32 }).notNull().default("PENDING_APPOINTMENT"),
+  fullName:          varchar("full_name", { length: 256 }),
+  dateOfBirth:       varchar("date_of_birth", { length: 16 }),
+  gender:            varchar("gender", { length: 32 }),
+  email:             varchar("email", { length: 256 }),
+  phone:             varchar("phone", { length: 32 }),
+  postalCode:        varchar("postal_code", { length: 16 }),
+  appointmentDate:   varchar("appointment_date", { length: 16 }),
+  centerId:          varchar("center_id", { length: 64 }),
+  registrationId:    varchar("registration_id", { length: 64 }), // RID after packet upload
+  createdAt:         timestamp("created_at").notNull().defaultNow(),
+  updatedAt:         timestamp("updated_at").notNull().defaultNow(),
+}, (t) => ({
+  tenantIdx:         index("mosip_reg_tenant_idx").on(t.tenantId),
+  preRegIdx:         index("mosip_reg_prereg_idx").on(t.preRegistrationId),
+  statusIdx:         index("mosip_reg_status_idx").on(t.statusCode),
+}));
+
+/** Tracks registration packet submissions to the Registration Processor (Stage 2) */
+
+export const mosipRegistrationPackets = pgTable("mosip_registration_packets", {
+  id:             serial("id").primaryKey(),
+  tenantId:       varchar("tenant_id", { length: 64 }).notNull(),
+  registrationId: varchar("registration_id", { length: 64 }).notNull().unique(), // RID
+  packetId:       varchar("packet_id", { length: 128 }).notNull(),
+  packetName:     varchar("packet_name", { length: 256 }).notNull(),
+  source:         varchar("source", { length: 64 }).notNull().default("NEXTHUB"),
+  process:        varchar("process", { length: 16 }).notNull().default("NEW"),
+  schemaVersion:  varchar("schema_version", { length: 16 }),
+  statusCode:     varchar("status_code", { length: 64 }).notNull().default("RECEIVED"),
+  statusComment:  text("status_comment"),
+  uploadedAt:     timestamp("uploaded_at").notNull().defaultNow(),
+  processedAt:    timestamp("processed_at"),
+  createdAt:      timestamp("created_at").notNull().defaultNow(),
+  updatedAt:      timestamp("updated_at").notNull().defaultNow(),
+}, (t) => ({
+  tenantIdx:      index("mosip_pkt_tenant_idx").on(t.tenantId),
+  ridIdx:         index("mosip_pkt_rid_idx").on(t.registrationId),
+  statusIdx:      index("mosip_pkt_status_idx").on(t.statusCode),
+}));
+
+/** Stores issued UIN records and their lifecycle state (Stage 3 — UIN issuance) */
+
+export const mosipUinRecords = pgTable("mosip_uin_records", {
+  id:             serial("id").primaryKey(),
+  tenantId:       varchar("tenant_id", { length: 64 }).notNull(),
+  uinHash:        varchar("uin_hash", { length: 128 }).notNull().unique(), // SHA-256 of UIN
+  registrationId: varchar("registration_id", { length: 64 }),
+  status:         varchar("status", { length: 32 }).notNull().default("ACTIVATED"),
+  fullName:       varchar("full_name", { length: 256 }),
+  dateOfBirth:    varchar("date_of_birth", { length: 16 }),
+  gender:         varchar("gender", { length: 32 }),
+  lockedAuthTypes:jsonb("locked_auth_types"),  // array of locked auth types
+  issuedAt:       timestamp("issued_at"),
+  lastUpdatedAt:  timestamp("last_updated_at"),
+  createdAt:      timestamp("created_at").notNull().defaultNow(),
+  updatedAt:      timestamp("updated_at").notNull().defaultNow(),
+}, (t) => ({
+  tenantIdx:      index("mosip_uin_tenant_idx").on(t.tenantId),
+  uinHashIdx:     index("mosip_uin_hash_idx").on(t.uinHash),
+  statusIdx:      index("mosip_uin_status_idx").on(t.status),
+}));
+
+/** Stores Virtual IDs (VIDs) generated for UINs (Stage 4 — VID generation) */
+
+export const mosipVidRecords = pgTable("mosip_vid_records", {
+  id:          serial("id").primaryKey(),
+  tenantId:    varchar("tenant_id", { length: 64 }).notNull(),
+  vidHash:     varchar("vid_hash", { length: 128 }).notNull().unique(), // SHA-256 of VID
+  uinHash:     varchar("uin_hash", { length: 128 }).notNull(),
+  vidType:     varchar("vid_type", { length: 16 }).notNull().default("PERPETUAL"),
+  status:      varchar("status", { length: 16 }).notNull().default("ACTIVE"),
+  expiryTime:  timestamp("expiry_time"),
+  generatedOn: timestamp("generated_on").notNull().defaultNow(),
+  revokedAt:   timestamp("revoked_at"),
+  createdAt:   timestamp("created_at").notNull().defaultNow(),
+}, (t) => ({
+  tenantIdx:   index("mosip_vid_tenant_idx").on(t.tenantId),
+  uinHashIdx:  index("mosip_vid_uin_hash_idx").on(t.uinHash),
+  statusIdx:   index("mosip_vid_status_idx").on(t.status),
+}));
+
+/** Tracks national ID credential issuance requests (Stage 5 — credential issuance) */
+
+export const mosipCredentialRequests = pgTable("mosip_credential_requests", {
+  id:              serial("id").primaryKey(),
+  tenantId:        varchar("tenant_id", { length: 64 }).notNull(),
+  requestId:       varchar("request_id", { length: 128 }).notNull().unique(),
+  credentialType:  varchar("credential_type", { length: 32 }).notNull().default("pdf"),
+  issuer:          varchar("issuer", { length: 128 }),
+  recepientId:     varchar("recepient_id", { length: 64 }).notNull(),
+  recepientIdType: varchar("recepient_id_type", { length: 8 }).notNull().default("UIN"),
+  status:          varchar("status", { length: 32 }).notNull().default("REQUESTED"),
+  statusComment:   text("status_comment"),
+  dataShareUrl:    text("data_share_url"),
+  requestedAt:     timestamp("requested_at").notNull().defaultNow(),
+  issuedAt:        timestamp("issued_at"),
+  createdAt:       timestamp("created_at").notNull().defaultNow(),
+  updatedAt:       timestamp("updated_at").notNull().defaultNow(),
+}, (t) => ({
+  tenantIdx:       index("mosip_cred_tenant_idx").on(t.tenantId),
+  requestIdx:      index("mosip_cred_request_idx").on(t.requestId),
+  statusIdx:       index("mosip_cred_status_idx").on(t.status),
+}));
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// FACE BIOMETRIC — Next-Generation Facial Recognition + Liveness Detection
+// ═══════════════════════════════════════════════════════════════════════════════
+
+/**
+ * face_verify_logs — Audit log for all 1:1 face verification requests.
+ * Stores result metadata; raw embeddings are never persisted here.
+ */
+
+export const faceVerifyLogs = pgTable("face_verify_logs", {
+  id:              serial("id").primaryKey(),
+  subjectId:       varchar("subject_id",  { length: 128 }),
+  tenantId:        varchar("tenant_id",   { length: 64 }),
+  verified:        boolean("verified").notNull(),
+  similarity:      real("similarity").notNull(),
+  distance:        real("distance").notNull(),
+  threshold:       real("threshold").notNull(),
+  livenessPassed:  boolean("liveness_passed"),
+  livenessScore:   real("liveness_score"),
+  qualityPassed:   boolean("quality_passed"),
+  qualityScore:    real("quality_score"),
+  faceCountProbe:  integer("face_count_probe").notNull().default(0),
+  faceCountRef:    integer("face_count_ref").notNull().default(0),
+  imageHashProbe:  varchar("image_hash_probe", { length: 64 }),
+  processingMs:    real("processing_ms"),
+  cached:          boolean("cached").notNull().default(false),
+  verifiedAt:      timestamp("verified_at").notNull().defaultNow(),
+  createdAt:       timestamp("created_at").notNull().defaultNow(),
+}, (t) => ({
+  subjectIdx:  index("fvl_subject_idx").on(t.subjectId),
+  tenantIdx:   index("fvl_tenant_idx").on(t.tenantId),
+  verifiedIdx: index("fvl_verified_idx").on(t.verified),
+  createdIdx:  index("fvl_created_idx").on(t.createdAt),
+}));
+
+/**
+ * face_liveness_logs — Audit log for passive liveness / anti-spoofing checks.
+ */
+
+export const faceLivenessLogs = pgTable("face_liveness_logs", {
+  id:            serial("id").primaryKey(),
+  subjectId:     varchar("subject_id",  { length: 128 }),
+  tenantId:      varchar("tenant_id",   { length: 64 }),
+  isLive:        boolean("is_live").notNull(),
+  spoofScore:    real("spoof_score").notNull(),
+  livenessScore: real("liveness_score").notNull(),
+  attackType:    varchar("attack_type", { length: 64 }),
+  faceDetected:  boolean("face_detected").notNull().default(false),
+  imageHash:     varchar("image_hash",  { length: 64 }),
+  processingMs:  real("processing_ms"),
+  cached:        boolean("cached").notNull().default(false),
+  checkedAt:     timestamp("checked_at").notNull().defaultNow(),
+  createdAt:     timestamp("created_at").notNull().defaultNow(),
+}, (t) => ({
+  subjectIdx:  index("fll_subject_idx").on(t.subjectId),
+  tenantIdx:   index("fll_tenant_idx").on(t.tenantId),
+  isLiveIdx:   index("fll_is_live_idx").on(t.isLive),
+  createdIdx:  index("fll_created_idx").on(t.createdAt),
+}));
+
+/**
+ * face_enrollments — Tracks enrolled face subjects.
+ * Actual 512-d ArcFace embeddings are stored in Redis (face-biometric sidecar).
+ */
+
+export const faceEnrollments = pgTable("face_enrollments", {
+  id:            serial("id").primaryKey(),
+  subjectId:     varchar("subject_id",  { length: 128 }).notNull().unique(),
+  tenantId:      varchar("tenant_id",   { length: 64 }),
+  embeddingDim:  integer("embedding_dim").notNull().default(512),
+  livenessPassed: boolean("liveness_passed"),
+  qualityPassed:  boolean("quality_passed"),
+  enrolledAt:    timestamp("enrolled_at").notNull().defaultNow(),
+  updatedAt:     timestamp("updated_at").notNull().defaultNow(),
+  revokedAt:     timestamp("revoked_at"),
+  isActive:      boolean("is_active").notNull().default(true),
+}, (t) => ({
+  subjectIdx:  uniqueIndex("fe_subject_idx").on(t.subjectId),
+  tenantIdx:   index("fe_tenant_idx").on(t.tenantId),
+  activeIdx:   index("fe_active_idx").on(t.isActive),
+}));
+
+/**
+ * face_identify_logs — Audit log for 1:N face identification requests.
+ */
+
+export const faceIdentifyLogs = pgTable("face_identify_logs", {
+  id:             serial("id").primaryKey(),
+  tenantId:       varchar("tenant_id",     { length: 64 }),
+  identified:     boolean("identified").notNull(),
+  topMatchId:     varchar("top_match_id",  { length: 128 }),
+  topSimilarity:  real("top_similarity").notNull().default(0),
+  candidateCount: integer("candidate_count").notNull().default(0),
+  probeLiveness:  boolean("probe_liveness"),
+  processingMs:   real("processing_ms"),
+  createdAt:      timestamp("created_at").notNull().defaultNow(),
+}, (t) => ({
+  tenantIdx:      index("fil_tenant_idx").on(t.tenantId),
+  identifiedIdx:  index("fil_identified_idx").on(t.identified),
+  createdIdx:     index("fil_created_idx").on(t.createdAt),
+}));
+
+// ── Face Biometric Partner API — Partner Registry ─────────────────────────────
+
+export const facePartners = pgTable("face_partners", {
+  id:            text("id").primaryKey(),
+  name:          text("name").notNull(),
+  orgType:       text("org_type").notNull().default("commercial"),
+  contactEmail:  text("contact_email").notNull(),
+  website:       text("website"),
+  status:        text("status").notNull().default("active"),
+  allowedScopes: text("allowed_scopes").notNull().default('["face:verify","face:liveness","face:quality"]'),
+  createdAt:     timestamp("created_at").defaultNow(),
+  updatedAt:     timestamp("updated_at").defaultNow(),
+}, (t) => ({
+  statusIdx: index("fp_status_idx").on(t.status),
+}));
+
+// ── Face Biometric Partner API — API Keys ─────────────────────────────────────
+
+export const facePartnerApiKeys = pgTable("face_partner_api_keys", {
+  id:           text("id").primaryKey(),
+  partnerId:    text("partner_id").notNull(),
+  name:         text("name").notNull(),
+  keyPrefix:    text("key_prefix").notNull(),
+  keyHash:      text("key_hash").notNull().unique(),
+  scopes:       text("scopes").notNull().default('["face:verify","face:liveness"]'),
+  rateLimitRpm: integer("rate_limit_rpm").notNull().default(60),
+  environment:  text("environment").notNull().default("production"),
+  isActive:     boolean("is_active").notNull().default(true),
+  lastUsedAt:   timestamp("last_used_at"),
+  expiresAt:    timestamp("expires_at"),
+  createdAt:    timestamp("created_at").defaultNow(),
+  updatedAt:    timestamp("updated_at").defaultNow(),
+}, (t) => ({
+  partnerIdx: index("fpak_partner_idx").on(t.partnerId),
+  hashIdx:    uniqueIndex("fpak_hash_idx").on(t.keyHash),
+  activeIdx:  index("fpak_active_idx").on(t.isActive),
+}));
+
+// ── Face Biometric Partner API — Usage Logs ───────────────────────────────────
+
+export const facePartnerUsageLogs = pgTable("face_partner_usage_logs", {
+  id:         text("id").primaryKey(),
+  keyId:      text("key_id").notNull(),
+  partnerId:  text("partner_id").notNull(),
+  endpoint:   text("endpoint").notNull(),
+  statusCode: integer("status_code").notNull(),
+  latencyMs:  integer("latency_ms"),
+  requestId:  text("request_id"),
+  ipAddress:  text("ip_address"),
+  createdAt:  timestamp("created_at").defaultNow(),
+}, (t) => ({
+  partnerIdx: index("fpul_partner_idx").on(t.partnerId),
+  keyIdx:     index("fpul_key_idx").on(t.keyId),
+  createdIdx: index("fpul_created_idx").on(t.createdAt),
+}));
+
+// ── Face Biometric — Batch Identification Logs ────────────────────────────────
+
+export const faceBatchIdentifyLogs = pgTable("face_batch_identify_logs", {
+  id:              text("id").primaryKey(),
+  partnerId:       text("partner_id"),
+  tenantId:        text("tenant_id"),
+  totalProbes:     integer("total_probes").notNull(),
+  identifiedCount: integer("identified_count").notNull(),
+  processingMs:    real("processing_ms"),
+  requestId:       text("request_id"),
+  ipAddress:       text("ip_address"),
+  createdAt:       timestamp("created_at").defaultNow(),
+}, (t) => ({
+  partnerIdx: index("fbil_partner_idx").on(t.partnerId),
+  createdIdx: index("fbil_created_idx").on(t.createdAt),
+}));
+
+// ── Face Biometric — Signed Payment Assertions ────────────────────────────────
+// Stores RS256-signed JWT assertions issued after a successful face verification
+// for payment authentication (SCA/CBN compliance).
+
+export const facePaymentAssertions = pgTable("face_payment_assertions", {
+  id:            text("id").primaryKey(),
+  subjectId:     text("subject_id").notNull(),
+  tenantId:      text("tenant_id"),
+  partnerId:     text("partner_id"),
+  jwtToken:      text("jwt_token").notNull(),
+  similarity:    real("similarity").notNull(),
+  livenessPassed: boolean("liveness_passed"),
+  qualityPassed: boolean("quality_passed"),
+  issuedAt:      timestamp("issued_at").defaultNow(),
+  expiresAt:     timestamp("expires_at").notNull(),
+  usedAt:        timestamp("used_at"),
+  revoked:       boolean("revoked").notNull().default(false),
+  revokedReason: text("revoked_reason"),
+  ipAddress:     text("ip_address"),
+  requestId:     text("request_id"),
+}, (t) => ({
+  subjectIdx:  index("fpa_subject_idx").on(t.subjectId),
+  partnerIdx:  index("fpa_partner_idx").on(t.partnerId),
+  expiresIdx:  index("fpa_expires_idx").on(t.expiresAt),
+  revokedIdx:  index("fpa_revoked_idx").on(t.revoked),
+}));
+
+// ── Face Biometric — Public Key Cache ─────────────────────────────────────────
+// Caches the RS256 public key fetched from the face-biometric sidecar for
+// assertion verification without round-tripping the sidecar on every request.
+
+export const faceBiometricPublicKeys = pgTable("face_biometric_public_keys", {
+  id:         text("id").primaryKey(),
+  algorithm:  text("algorithm").notNull().default("RS256"),
+  publicKey:  text("public_key").notNull(),
+  fingerprint: text("fingerprint").notNull(),
+  isActive:   boolean("is_active").notNull().default(true),
+  fetchedAt:  timestamp("fetched_at").defaultNow(),
+  expiresAt:  timestamp("expires_at"),
+}, (t) => ({
+  activeIdx:      index("fbpk_active_idx").on(t.isActive),
+  fingerprintIdx: uniqueIndex("fbpk_fingerprint_idx").on(t.fingerprint),
+}));
+
+// ─── SOTA Face Biometric: Active Liveness Sessions ───────────────────────────
+
+export const faceActiveLivenessSessions = pgTable("face_active_liveness_sessions", (t) => ({
+  id:            serial("id").primaryKey(),
+  sessionId:     varchar("session_id", { length: 64 }).notNull().unique(),
+  challengeType: text("challenge_type").notNull(),
+  nonce:         varchar("nonce", { length: 128 }).notNull(),
+  tenantId:      varchar("tenant_id", { length: 64 }),
+  passed:        boolean("passed"),
+  confidence:    real("confidence"),
+  framesAnalyzed: integer("frames_analyzed"),
+  failureReason: text("failure_reason"),
+  expiresAt:     timestamp("expires_at", { withTimezone: true }).notNull(),
+  createdAt:     timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  verifiedAt:    timestamp("verified_at", { withTimezone: true }),
+}), (t) => ({
+  sessionIdx:  uniqueIndex("fals_session_idx").on(t.sessionId),
+  tenantIdx:   index("fals_tenant_idx").on(t.tenantId),
+  createdIdx:  index("fals_created_idx").on(t.createdAt),
+}));
+
+// ─── SOTA Face Biometric: Deepfake Detection Logs ────────────────────────────
+
+export const faceDeepfakeLogs = pgTable("face_deepfake_logs", (t) => ({
+  id:               serial("id").primaryKey(),
+  requestId:        varchar("request_id", { length: 64 }).notNull().unique(),
+  tenantId:         varchar("tenant_id", { length: 64 }),
+  partnerId:        varchar("partner_id", { length: 64 }),
+  isDeepfake:       boolean("is_deepfake").notNull(),
+  deepfakeScore:    real("deepfake_score").notNull(),
+  attackType:       text("attack_type"),
+  dctArtifactScore: real("dct_artifact_score"),
+  consistencyScore: real("consistency_score"),
+  confidence:       real("confidence").notNull(),
+  context:          text("context"),
+  createdAt:        timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+}), (t) => ({
+  requestIdx:  uniqueIndex("fddl_request_idx").on(t.requestId),
+  tenantIdx:   index("fddl_tenant_idx").on(t.tenantId),
+  deepfakeIdx: index("fddl_deepfake_idx").on(t.isDeepfake),
+  createdIdx:  index("fddl_created_idx").on(t.createdAt),
+}));
+
+// ─── SOTA Face Biometric: Attribute Analysis Logs ────────────────────────────
+
+export const faceAttributeLogs = pgTable("face_attribute_logs", (t) => ({
+  id:                serial("id").primaryKey(),
+  requestId:         varchar("request_id", { length: 64 }).notNull().unique(),
+  tenantId:          varchar("tenant_id", { length: 64 }),
+  partnerId:         varchar("partner_id", { length: 64 }),
+  ageEstimate:       real("age_estimate"),
+  ageBracket:        text("age_bracket"),
+  gender:            text("gender"),
+  genderConfidence:  real("gender_confidence"),
+  emotion:           text("emotion"),
+  poseYaw:           real("pose_yaw"),
+  posePitch:         real("pose_pitch"),
+  poseRoll:          real("pose_roll"),
+  occlusionRegions:  jsonb("occlusion_regions"),
+  createdAt:         timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+}), (t) => ({
+  requestIdx: uniqueIndex("fal_request_idx").on(t.requestId),
+  tenantIdx:  index("fal_tenant_idx").on(t.tenantId),
+  createdIdx: index("fal_created_idx").on(t.createdAt),
+}));
+
+// ─── SOTA Face Biometric: Video Verification Logs ────────────────────────────
+
+export const faceVideoVerifyLogs = pgTable("face_video_verify_logs", (t) => ({
+  id:                  serial("id").primaryKey(),
+  requestId:           varchar("request_id", { length: 64 }).notNull().unique(),
+  subjectId:           varchar("subject_id", { length: 64 }),
+  tenantId:            varchar("tenant_id", { length: 64 }),
+  partnerId:           varchar("partner_id", { length: 64 }),
+  verified:            boolean("verified").notNull(),
+  meanSimilarity:      real("mean_similarity").notNull(),
+  minSimilarity:       real("min_similarity"),
+  maxSimilarity:       real("max_similarity"),
+  framesAnalyzed:      integer("frames_analyzed").notNull(),
+  framesPassed:        integer("frames_passed").notNull(),
+  temporalConsistency: real("temporal_consistency"),
+  livenessPassed:      boolean("liveness_passed"),
+  processingMs:        real("processing_ms"),
+  context:             text("context"),
+  createdAt:           timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+}), (t) => ({
+  requestIdx: uniqueIndex("fvvl_request_idx").on(t.requestId),
+  subjectIdx: index("fvvl_subject_idx").on(t.subjectId),
+  tenantIdx:  index("fvvl_tenant_idx").on(t.tenantId),
+  createdIdx: index("fvvl_created_idx").on(t.createdAt),
+}));
+
+// ─── SOTA Face Biometric: Bias Audit Snapshots ───────────────────────────────
+
+export const faceBiasAuditSnapshots = pgTable("face_bias_audit_snapshots", (t) => ({
+  id:              serial("id").primaryKey(),
+  snapshotId:      varchar("snapshot_id", { length: 64 }).notNull().unique(),
+  generatedAt:     timestamp("generated_at", { withTimezone: true }).notNull(),
+  windowSecs:      integer("window_secs").notNull(),
+  totalOperations: bigint("total_operations", { mode: "number" }).notNull(),
+  groups:          jsonb("groups").notNull(),
+  alerts:          jsonb("alerts").notNull(),
+  summary:         jsonb("summary").notNull(),
+  createdAt:       timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+}), (t) => ({
+  snapshotIdx:  uniqueIndex("fbas_snapshot_idx").on(t.snapshotId),
+  generatedIdx: index("fbas_generated_idx").on(t.generatedAt),
+}));
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// NINAuth / NIMC Integration Schema
+// ═══════════════════════════════════════════════════════════════════════════════
+
+// Stores the OIDC consent sessions initiated via NINAuth
+
+export const ninAuthConsentSessions = pgTable("ninauth_consent_sessions", {
+  id:            text("id").primaryKey(),
+  state:         text("state").notNull().unique(),
+  codeVerifier:  text("code_verifier").notNull(),
+  nonce:         text("nonce"),
+  scopes:        text("scopes").array().notNull().default([]),
+  redirectUri:   text("redirect_uri"),
+  userId:        text("user_id"),
+  status:        text("status").notNull().default("pending"), // pending | completed | expired
+  createdAt:     timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  completedAt:   timestamp("completed_at", { withTimezone: true }),
+  expiresAt:     timestamp("expires_at", { withTimezone: true }),
+}, (t) => ({
+  stateIdx:  uniqueIndex("ninauth_session_state_idx").on(t.state),
+  userIdx:   index("ninauth_session_user_idx").on(t.userId),
+}));
+
+// Stores verified NIN identity claims received from NINAuth tokens
+
+export const ninAuthVerifiedIdentities = pgTable("ninauth_verified_identities", {
+  id:            text("id").primaryKey(),
+  ninHash:       text("nin_hash").notNull(),          // SHA-256 of NIN — never store raw NIN
+  firstName:     text("first_name"),
+  lastName:      text("last_name"),
+  middleName:    text("middle_name"),
+  dateOfBirth:   text("date_of_birth"),
+  gender:        text("gender"),
+  phoneHash:     text("phone_hash"),
+  emailHash:     text("email_hash"),
+  stateOfOrigin: text("state_of_origin"),
+  lga:           text("lga"),
+  verifiedAt:    timestamp("verified_at", { withTimezone: true }).defaultNow().notNull(),
+  accessToken:   text("access_token"),               // encrypted at rest
+  idToken:       text("id_token"),
+  tokenExpiresAt: timestamp("token_expires_at", { withTimezone: true }),
+  userId:        text("user_id"),
+  sessionId:     text("session_id"),
+}, (t) => ({
+  ninHashIdx:  index("ninauth_identity_nin_hash_idx").on(t.ninHash),
+  userIdx:     index("ninauth_identity_user_idx").on(t.userId),
+}));
+
+// Stores direct NIN verification results (operator KYC flow)
+
+export const ninVerificationLogs = pgTable("nin_verification_logs", {
+  id:           text("id").primaryKey(),
+  ninPrefix:    text("nin_prefix").notNull(),         // first 4 digits + "*******"
+  verified:     boolean("verified").notNull(),
+  matchType:    text("match_type"),                   // "exact" | "phonetic" | "partial"
+  fieldResults: jsonb("field_results"),               // per-field match results
+  operatorId:   text("operator_id"),
+  partnerId:    text("partner_id"),
+  requestedAt:  timestamp("requested_at", { withTimezone: true }).defaultNow().notNull(),
+}, (t) => ({
+  partnerIdx: index("nin_verify_partner_idx").on(t.partnerId, t.requestedAt),
+}));
+
+// Stores NIN face-match results (ArcFace + liveness)
+
+export const ninFaceMatchLogs = pgTable("nin_face_match_logs", {
+  id:              text("id").primaryKey(),
+  ninPrefix:       text("nin_prefix").notNull(),
+  verified:        boolean("verified").notNull(),
+  similarity:      real("similarity").notNull(),
+  livenessPassed:  boolean("liveness_passed").notNull(),
+  livenessScore:   real("liveness_score").notNull(),
+  matchType:       text("match_type").notNull(),
+  context:         text("context").notNull(),         // "government" | "payment" | "border" | "event"
+  assertionJwtId:  text("assertion_jwt_id"),
+  partnerId:       text("partner_id"),
+  userId:          text("user_id"),
+  requestedAt:     timestamp("requested_at", { withTimezone: true }).defaultNow().notNull(),
+}, (t) => ({
+  partnerIdx: index("nin_face_match_partner_idx").on(t.partnerId, t.requestedAt),
+  contextIdx: index("nin_face_match_context_idx").on(t.context),
+}));
+
+// Stores W3C Verifiable Credential verification results
+
+export const ninVCVerificationLogs = pgTable("nin_vc_verification_logs", {
+  id:              text("id").primaryKey(),
+  vcId:            text("vc_id").notNull(),
+  issuer:          text("issuer"),
+  subjectNinHash:  text("subject_nin_hash"),
+  valid:           boolean("valid").notNull(),
+  claims:          jsonb("claims"),
+  partnerId:       text("partner_id"),
+  error:           text("error"),
+  verifiedAt:      timestamp("verified_at", { withTimezone: true }).defaultNow().notNull(),
+}, (t) => ({
+  vcIdIdx:    index("nin_vc_id_idx").on(t.vcId),
+  subjectIdx: index("nin_vc_subject_idx").on(t.subjectNinHash),
+}));
+
+// ─── Photo Fidelity Pipeline Tables ──────────────────────────────────────────
+// ICAO 9303 / ISO 19794-5 / NIST FRVT quality audit trail
+
+export const faceFidelityAuditLogs = pgTable("face_fidelity_audit_logs", {
+  id:                 text("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  subjectId:          varchar("subject_id", { length: 128 }).notNull(),
+  tenantId:           varchar("tenant_id", { length: 64 }).notNull().default("default"),
+  partnerId:          varchar("partner_id", { length: 64 }),
+  overallScore:       varchar("overall_score", { length: 16 }).notNull(),
+  enrollmentReady:    boolean("enrollment_ready").notNull(),
+  icaoCompliant:      boolean("icao_compliant").notNull(),
+  remediationApplied: boolean("remediation_applied").notNull().default(false),
+  rejectionReason:    text("rejection_reason"),
+  guidancePriority:   varchar("guidance_priority", { length: 64 }),
+  poseYaw:            varchar("pose_yaw", { length: 16 }),
+  posePitch:          varchar("pose_pitch", { length: 16 }),
+  poseRoll:           varchar("pose_roll", { length: 16 }),
+  sharpnessScore:     varchar("sharpness_score", { length: 16 }),
+  brightnessScore:    varchar("brightness_score", { length: 16 }),
+  faceWidth:          integer("face_width"),
+  faceHeight:         integer("face_height"),
+  context:            varchar("context", { length: 32 }).notNull().default("enrollment"),
+  createdAt:          timestamp("created_at").notNull().defaultNow(),
+});
+
+export const faceCaptureGuidanceLogs = pgTable("face_capture_guidance_logs", {
+  id:              text("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  subjectId:       varchar("subject_id", { length: 128 }).notNull(),
+  partnerId:       varchar("partner_id", { length: 64 }),
+  ready:           boolean("ready").notNull(),
+  primaryIssue:    varchar("primary_issue", { length: 64 }),
+  instructions:    text("instructions"),
+  qualityScore:    varchar("quality_score", { length: 16 }),
+  context:         varchar("context", { length: 32 }).notNull().default("enrollment"),
+  processingMs:    integer("processing_ms"),
+  createdAt:       timestamp("created_at").notNull().defaultNow(),
+});

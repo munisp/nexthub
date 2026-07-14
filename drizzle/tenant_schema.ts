@@ -101,9 +101,9 @@ export const tenants = pgTable("tenants", {
   suspendedAt:         timestamp("suspended_at"),
   suspendedReason:     text("suspended_reason"),
 }, (t) => [
-  uniqueIndex("tenants_slug_idx").on(t.slug),
-  index("tenants_status_idx").on(t.status),
-  index("tenants_jurisdiction_idx").on(t.jurisdiction),
+  uniqueIndex("tenant_slug_unique_idx").on(t.slug),
+  index("tenant_status_idx").on(t.status),
+  index("tenant_jurisdiction_idx").on(t.jurisdiction),
 ]);
 
 export type Tenant = typeof tenants.$inferSelect;

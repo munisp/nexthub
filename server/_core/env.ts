@@ -356,8 +356,6 @@ mlScorerUrl: process.env.ML_SCORER_URL ?? "http://dispute-ml-scorer:8230",
   // PIX: Brazil Instant Payment System (via BCB)
   pixGatewayUrl: process.env.PIX_GATEWAY_URL ?? 'https://sandbox.bcb.gov.br/pix/v1',
   pixApiKey: process.env.PIX_API_KEY ?? '',
-  // DeepFace sidecar
-  deepfaceSidecarUrl: process.env.DEEPFACE_SIDECAR_URL ?? 'http://localhost:8001',
   // ─── MOSIP IDA + eSignet OIDC4VP/OIDC4VCI (Wave 26 — Digital Identity) ────────
   mosipIdaUrl: process.env.MOSIP_IDA_URL ?? 'https://api.sandbox.mosip.net/idauthentication/v1',
   mosipIdaPartnerId: process.env.MOSIP_IDA_PARTNER_ID ?? '',

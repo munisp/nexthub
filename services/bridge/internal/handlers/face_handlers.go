@@ -397,11 +397,3 @@ c.JSON(200, result)
 
 // ─── SOTA: Bias Audit ─────────────────────────────────────────────────────────
 
-func (h *Handler) HandleBiasReport(c *gin.Context) {
-result, err := h.FaceBiometric.GetBiasReport(c.Request.Context())
-if err != nil {
-c.JSON(502, gin.H{"error": err.Error()})
-return
-}
-c.JSON(200, result)
-}

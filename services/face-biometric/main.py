@@ -245,7 +245,9 @@ redis_client = kafka_producer = face_app = liveness_session = None
 qdrant_client = jwt_private_key = mediapipe_face_mesh = None
 jwt_public_key_pem = ""
 _bias_counters: Dict[str, Dict[str, int]] = defaultdict(lambda: defaultdict(int))
-_active_sessions: Dict[str, Dict[str, Any]] = {}
+_active_sessions: Dict[str, Dict[str, Any]] = {}  # in-process fallback when Redis is unavailable
+ACTIVE_SESSION_TTL = 90  # seconds — slightly longer than the 60-second challenge window
+ACTIVE_SESSION_KEY_PREFIX = "nexthub:liveness:session:"
 
 # ── Startup ───────────────────────────────────────────────────────────────────
 @app.on_event("startup")
@@ -683,15 +685,38 @@ async def start_active_liveness(req: ActiveLivenessStartRequest):
               "turn_left":"Please slowly turn your head to the left",
               "turn_right":"Please slowly turn your head to the right",
               "smile":"Please smile naturally","nod":"Please nod your head up and down"}
-    _active_sessions[sid] = {"challenge_type":ctype,"nonce":nonce,"expires_at":exp,
-                              "created_at":time.time(),"tenant_id":req.tenant_id}
+    session_data = {"challenge_type":ctype,"nonce":nonce,"expires_at":exp,
+                    "created_at":time.time(),"tenant_id":req.tenant_id}
+    # Prefer Redis for distributed session storage (multi-worker / multi-replica safe)
+    if redis_client is not None:
+        try:
+            await redis_client.setex(
+                f"{ACTIVE_SESSION_KEY_PREFIX}{sid}",
+                ACTIVE_SESSION_TTL,
+                json.dumps(session_data)
+            )
+        except Exception as _e:
+            logger.warning(f"redis_session_write_failed: {_e} — falling back to in-memory")
+            _active_sessions[sid] = session_data
+    else:
+        _active_sessions[sid] = session_data
     return ActiveLivenessChallenge(session_id=sid,challenge_type=ctype,
         instruction=instrs.get(ctype,"Follow the instruction"),expires_at=exp,nonce=nonce)
 
 # Active Liveness — Verify
 @app.post("/v1/face/liveness/active/verify", response_model=ActiveLivenessVerifyResult)
 async def verify_active_liveness(req: ActiveLivenessVerifyRequest, bg: BackgroundTasks):
-    sess = _active_sessions.pop(req.session_id, None)
+    # Retrieve session from Redis first, fall back to in-memory dict
+    sess = None
+    if redis_client is not None:
+        try:
+            raw = await redis_client.getdel(f"{ACTIVE_SESSION_KEY_PREFIX}{req.session_id}")
+            if raw is not None:
+                sess = json.loads(raw)
+        except Exception as _e:
+            logger.warning(f"redis_session_read_failed: {_e} — checking in-memory fallback")
+    if sess is None:
+        sess = _active_sessions.pop(req.session_id, None)
     if sess is None: raise HTTPException(404,"Session not found or expired")
     if time.time()-sess["created_at"]>60: raise HTTPException(410,"Session expired")
     if mediapipe_face_mesh is None: raise HTTPException(503,"MediaPipe not available")

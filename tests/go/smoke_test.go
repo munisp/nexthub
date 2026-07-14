@@ -367,3 +367,114 @@ func TestPartnerFaceVerifyUnauth(t *testing.T) {
 	}
 	t.Logf("Partner face verify (no key) correctly returned: %d", resp.StatusCode)
 }
+
+// ─── Bias Audit Relay Routes ──────────────────────────────────────────────────
+
+func TestBiasAuditIngest(t *testing.T) {
+payload := map[string]interface{}{
+"operation_id":   "op_test_001",
+"tenant_id":      "ten_test",
+"subject_id":     "sub_001",
+"age_group":      "25-34",
+"gender":         "M",
+"passed":         true,
+"score":          0.92,
+"operation_type": "verify",
+}
+resp := doRequest(t, "POST", "/v1/bias-audit/ingest", payload, 200, 503, 502)
+if resp != nil {
+defer resp.Body.Close()
+t.Logf("Bias audit ingest: %d", resp.StatusCode)
+}
+}
+
+func TestBiasAuditReport(t *testing.T) {
+resp := doRequest(t, "GET", "/v1/bias-audit/report", nil, 200, 503, 502)
+if resp != nil {
+defer resp.Body.Close()
+t.Logf("Bias audit report: %d", resp.StatusCode)
+}
+}
+
+func TestBiasAuditReportByOp(t *testing.T) {
+resp := doRequest(t, "GET", "/v1/bias-audit/report/verify", nil, 200, 503, 502)
+if resp != nil {
+defer resp.Body.Close()
+t.Logf("Bias audit report by op: %d", resp.StatusCode)
+}
+}
+
+func TestBiasAuditAlerts(t *testing.T) {
+resp := doRequest(t, "GET", "/v1/bias-audit/alerts", nil, 200, 503, 502)
+if resp != nil {
+defer resp.Body.Close()
+t.Logf("Bias audit alerts: %d", resp.StatusCode)
+}
+}
+
+func TestNINAuthConsentAudit(t *testing.T) {
+payload := map[string]interface{}{
+"subject_id":      "sub_001",
+"tenant_id":       "ten_test",
+"consent_type":    "biometric_enroll",
+"consent_granted": true,
+}
+resp := doRequest(t, "POST", "/v1/bias-audit/ninauth/consent", payload, 200, 503, 502)
+if resp != nil {
+defer resp.Body.Close()
+t.Logf("NINAuth consent audit: %d", resp.StatusCode)
+}
+}
+
+func TestNINAuthFaceMatchAudit(t *testing.T) {
+payload := map[string]interface{}{
+"subject_id":   "sub_001",
+"tenant_id":    "ten_test",
+"matched":      true,
+"score":        0.95,
+"operation_id": "op_test_001",
+}
+resp := doRequest(t, "POST", "/v1/bias-audit/ninauth/face-match", payload, 200, 503, 502)
+if resp != nil {
+defer resp.Body.Close()
+t.Logf("NINAuth face-match audit: %d", resp.StatusCode)
+}
+}
+
+func TestFidelityAuditIngest(t *testing.T) {
+payload := map[string]interface{}{
+"subject_id":       "sub_001",
+"tenant_id":        "ten_test",
+"operation_id":     "op_test_001",
+"overall_score":    0.88,
+"icao_compliant":   true,
+"sharpness_score":  0.91,
+"brightness_score": 0.85,
+"contrast_score":   0.80,
+"pose_yaw":         2.1,
+"pose_pitch":       1.5,
+"pose_roll":        0.8,
+"remediated":       false,
+}
+resp := doRequest(t, "POST", "/v1/bias-audit/fidelity/ingest", payload, 200, 503, 502)
+if resp != nil {
+defer resp.Body.Close()
+t.Logf("Fidelity audit ingest: %d", resp.StatusCode)
+}
+}
+
+func TestFidelityAuditReport(t *testing.T) {
+resp := doRequest(t, "GET", "/v1/bias-audit/fidelity/report", nil, 200, 503, 502)
+if resp != nil {
+defer resp.Body.Close()
+t.Logf("Fidelity audit report: %d", resp.StatusCode)
+}
+}
+
+func TestFidelityAuditCompliance(t *testing.T) {
+resp := doRequest(t, "GET", "/v1/bias-audit/fidelity/compliance", nil, 200, 503, 502)
+if resp != nil {
+defer resp.Body.Close()
+t.Logf("Fidelity audit compliance: %d", resp.StatusCode)
+}
+}

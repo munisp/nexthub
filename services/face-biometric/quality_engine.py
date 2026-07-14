@@ -28,9 +28,68 @@ from typing import Any, Dict, List, Optional, Tuple
 
 import cv2
 import numpy as np
+import os
 from PIL import Image
 
+try:
+    import onnxruntime as ort
+    _ORT_AVAILABLE = True
+except ImportError:
+    _ORT_AVAILABLE = False
+
 logger = logging.getLogger("quality_engine")
+
+# ─── Model Paths (populated at build time via Dockerfile) ─────────────────────
+CRFIQA_MODEL_PATH = os.getenv("CRFIQA_MODEL_PATH", "/app/models/cr_fiqa_quality.onnx")
+ESRGAN_MODEL_PATH = os.getenv("ESRGAN_MODEL_PATH", "/app/models/realesrgan_x2.onnx")
+
+# ─── Lazy-loaded ONNX sessions (initialised on first use) ──────────────────────
+_crfiqa_session: Optional[Any] = None
+_esrgan_session: Optional[Any] = None
+
+
+def _load_crfiqa_session() -> Optional[Any]:
+    """Load the CR-FIQA ONNX quality-scoring session once and cache it."""
+    global _crfiqa_session
+    if _crfiqa_session is not None:
+        return _crfiqa_session
+    if not _ORT_AVAILABLE:
+        return None
+    if not os.path.exists(CRFIQA_MODEL_PATH):
+        logger.warning(f"CR-FIQA model not found at {CRFIQA_MODEL_PATH} — heuristic fallback active")
+        return None
+    try:
+        _crfiqa_session = ort.InferenceSession(
+            CRFIQA_MODEL_PATH,
+            providers=["CUDAExecutionProvider", "CPUExecutionProvider"],
+        )
+        logger.info(f"CR-FIQA ONNX session loaded from {CRFIQA_MODEL_PATH}")
+        return _crfiqa_session
+    except Exception as e:
+        logger.warning(f"CR-FIQA ONNX load failed: {e} — heuristic fallback active")
+        return None
+
+
+def _load_esrgan_session() -> Optional[Any]:
+    """Load the Real-ESRGAN ONNX super-resolution session once and cache it."""
+    global _esrgan_session
+    if _esrgan_session is not None:
+        return _esrgan_session
+    if not _ORT_AVAILABLE:
+        return None
+    if not os.path.exists(ESRGAN_MODEL_PATH):
+        logger.warning(f"Real-ESRGAN model not found at {ESRGAN_MODEL_PATH} — Lanczos fallback active")
+        return None
+    try:
+        _esrgan_session = ort.InferenceSession(
+            ESRGAN_MODEL_PATH,
+            providers=["CUDAExecutionProvider", "CPUExecutionProvider"],
+        )
+        logger.info(f"Real-ESRGAN ONNX session loaded from {ESRGAN_MODEL_PATH}")
+        return _esrgan_session
+    except Exception as e:
+        logger.warning(f"Real-ESRGAN ONNX load failed: {e} — Lanczos fallback active")
+        return None
 
 # ─── ICAO 9303 / ISO 19794-5 Thresholds ──────────────────────────────────────
 # All values derived from ICAO Doc 9303 Part 9, Section 4 and ISO 19794-5 §6.
@@ -470,6 +529,20 @@ def neural_quality_score(img_bgr: np.ndarray, faces: list) -> float:
         face_112 = cv2.resize(face_crop, (112, 112), interpolation=cv2.INTER_LANCZOS4)
         gray_112 = cv2.cvtColor(face_112, cv2.COLOR_BGR2GRAY)
 
+        # ── CR-FIQA ONNX path (preferred when model is available) ──────────────────
+        sess = _load_crfiqa_session()
+        if sess is not None:
+            try:
+                # CR-FIQA expects a normalised RGB float32 tensor [1, 3, 112, 112]
+                rgb_112 = cv2.cvtColor(face_112, cv2.COLOR_BGR2RGB).astype(np.float32) / 255.0
+                inp = np.transpose(rgb_112, (2, 0, 1))[np.newaxis, ...]  # NCHW
+                input_name = sess.get_inputs()[0].name
+                output = sess.run(None, {input_name: inp})[0].flatten()
+                # CR-FIQA output is a scalar quality score in [0, 1]
+                return round(float(np.clip(output[0], 0.0, 1.0)), 4)
+            except Exception as _e:
+                logger.warning(f"CR-FIQA ONNX inference failed: {_e} — falling back to heuristic")
+
         # Feature 1: Multi-scale sharpness (Laplacian + Tenengrad)
         lap = _laplacian_sharpness(gray_112)
         ten = _tenengrad_sharpness(gray_112)
@@ -624,13 +697,35 @@ def apply_denoise(img_bgr: np.ndarray) -> np.ndarray:
 
 def upscale_image(img_bgr: np.ndarray, target_size: int = 640) -> np.ndarray:
     """
-    Upscale a low-resolution image using Lanczos interpolation.
-    Real-ESRGAN super-resolution would be used here if the model is available;
-    this is the CPU-safe fallback.
+    Upscale a low-resolution image using Real-ESRGAN ONNX super-resolution when
+    the model is available, otherwise falls back to Lanczos interpolation.
     """
     h, w = img_bgr.shape[:2]
     if max(h, w) >= target_size:
         return img_bgr
+
+    # ── Real-ESRGAN ONNX path (preferred when model is available) ──────────────
+    sess = _load_esrgan_session()
+    if sess is not None:
+        try:
+            # Real-ESRGAN expects normalised RGB float32 [1, 3, H, W]
+            rgb = cv2.cvtColor(img_bgr, cv2.COLOR_BGR2RGB).astype(np.float32) / 255.0
+            inp = np.transpose(rgb, (2, 0, 1))[np.newaxis, ...]  # NCHW
+            input_name = sess.get_inputs()[0].name
+            output = sess.run(None, {input_name: inp})[0]  # [1, 3, H*scale, W*scale]
+            out_rgb = np.clip(output[0].transpose(1, 2, 0) * 255.0, 0, 255).astype(np.uint8)
+            result = cv2.cvtColor(out_rgb, cv2.COLOR_RGB2BGR)
+            # If the ESRGAN output is still smaller than target, finish with Lanczos
+            rh, rw = result.shape[:2]
+            if max(rh, rw) < target_size:
+                scale2 = target_size / max(rh, rw)
+                result = cv2.resize(result, (int(rw * scale2), int(rh * scale2)),
+                                    interpolation=cv2.INTER_LANCZOS4)
+            return result
+        except Exception as _e:
+            logger.warning(f"Real-ESRGAN ONNX inference failed: {_e} — Lanczos fallback")
+
+    # ── Lanczos fallback ─────────────────────────────────────────────────────
     scale = target_size / max(h, w)
     new_w, new_h = int(w * scale), int(h * scale)
     return cv2.resize(img_bgr, (new_w, new_h), interpolation=cv2.INTER_LANCZOS4)

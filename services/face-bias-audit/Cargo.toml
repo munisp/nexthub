@@ -8,6 +8,10 @@ description = "NextHub face biometric demographic bias audit engine (Rust)"
 name = "face-bias-audit"
 path = "src/main.rs"
 
+[[test]]
+name = "smoke_test"
+path = "tests/smoke_test.rs"
+
 [dependencies]
 # Web framework
 axum            = { version = "0.7",  features = ["json", "macros"] }
@@ -48,6 +52,10 @@ dotenvy         = "0.15"
 
 # HTTP client (for forwarding to Python service)
 reqwest         = { version = "0.12", features = ["json", "rustls-tls"], default-features = false }
+
+[dev-dependencies]
+# Blocking HTTP client for integration smoke tests (reqwest blocking feature)
+reqwest         = { version = "0.12", features = ["json", "blocking", "rustls-tls"], default-features = false }
 
 [profile.release]
 opt-level       = 3

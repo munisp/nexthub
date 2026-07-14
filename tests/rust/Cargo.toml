@@ -1,0 +1,12 @@
+[package]
+name    = "face-bias-audit-smoke"
+version = "0.1.0"
+edition = "2021"
+
+[[test]]
+name = "smoke_test"
+path = "smoke_test.rs"
+
+[dev-dependencies]
+reqwest     = { version = "0.12", features = ["json", "blocking", "rustls-tls"], default-features = false }
+serde_json  = "1"

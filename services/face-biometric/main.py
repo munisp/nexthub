@@ -20,7 +20,7 @@ SOTA Enhancements:
   13. Jaro-Winkler + Soundex Name Matching
 """
 from __future__ import annotations
-import asyncio, base64, hashlib, io, json, logging, math, os, random, secrets, time
+import asyncio, base64, hashlib, json, logging, math, os, random, secrets, time
 from collections import defaultdict
 from datetime import datetime, timezone, timedelta
 from typing import Any, Dict, List, Optional, Tuple
@@ -252,8 +252,8 @@ ACTIVE_SESSION_KEY_PREFIX = "nexthub:liveness:session:"
 # ── Startup ───────────────────────────────────────────────────────────────────
 @app.on_event("startup")
 async def startup():
-    global redis_client, kafka_producer, face_app, liveness_session
-    global qdrant_client, jwt_private_key, jwt_public_key_pem, mediapipe_face_mesh
+    global redis_client, kafka_producer
+    global qdrant_client, jwt_private_key, jwt_public_key_pem
     loop = asyncio.get_event_loop()
     try:
         redis_client = await aioredis.from_url(REDIS_URL, decode_responses=False)
@@ -720,7 +720,6 @@ async def verify_active_liveness(req: ActiveLivenessVerifyRequest, bg: Backgroun
     if sess is None: raise HTTPException(404,"Session not found or expired")
     if time.time()-sess["created_at"]>60: raise HTTPException(410,"Session expired")
     if mediapipe_face_mesh is None: raise HTTPException(503,"MediaPipe not available")
-    import mediapipe as mp
     frames=[]; [frames.append(decode_image(b)) for b in req.frames_b64 if True]
     frame_lms=[]
     for frm in frames:
@@ -1389,7 +1388,6 @@ async def verify_nin_vc(req: NINVCVerifyRequest):
                     # Here we validate structure and issuer
                     jwks = jwks_resp.json()
                     kid  = header.get("kid")
-                    alg  = header.get("alg", "RS256")
                     # Find matching key
                     keys = [k for k in jwks.get("keys", []) if k.get("kid") == kid]
                     if keys:
@@ -1420,9 +1418,7 @@ from quality_engine import (
     full_quality_assessment,
     fidelity_report_to_dict,
     auto_crop_face,
-    FidelityReport,
     ICAO_MIN_FACE_WIDTH_PX,
-    ICAO_MIN_INTER_EYE_PX,
 )
 import base64 as _b64
 
@@ -1554,7 +1550,7 @@ async def capture_guidance(req: CaptureGuidanceRequest):
         faces = []
 
     # Fast path: ICAO compliance only (no BRISQUE, no neural scoring)
-    from quality_engine import check_icao_compliance, _laplacian_sharpness, assess_brisque, generate_guidance, BRISQUEResult
+    from quality_engine import check_icao_compliance, _laplacian_sharpness, generate_guidance, BRISQUEResult
     import cv2 as _cv2
     gray = _cv2.cvtColor(img, _cv2.COLOR_BGR2GRAY)
     brightness = float(gray.mean())

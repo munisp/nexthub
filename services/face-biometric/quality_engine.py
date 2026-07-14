@@ -19,7 +19,6 @@ Author: Manus AI
 
 from __future__ import annotations
 
-import io
 import logging
 import math
 from dataclasses import dataclass, field
@@ -29,7 +28,6 @@ from typing import Any, Dict, List, Optional, Tuple
 import cv2
 import numpy as np
 import os
-from PIL import Image
 
 try:
     import onnxruntime as ort

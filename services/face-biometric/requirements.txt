@@ -15,7 +15,7 @@ numpy==1.26.4
 Pillow==10.3.0
 
 # ── AI/ML — Active Liveness (MediaPipe 478-landmark Face Mesh) ───────────────
-mediapipe==0.10.14
+mediapipe==0.10.35
 
 # ── AI/ML — Face Attributes + Emotion (DeepFace) ─────────────────────────────
 deepface==0.0.93

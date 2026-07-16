@@ -18,7 +18,7 @@ Pillow==10.3.0
 mediapipe==0.10.14
 
 # ── AI/ML — Face Attributes + Emotion (DeepFace) ─────────────────────────────
-deepface==0.0.93
+deepface==0.0.100
 tf-keras==2.16.0
 
 # ── AI/ML — Image Processing ─────────────────────────────────────────────────

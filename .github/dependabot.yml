@@ -1,0 +1,56 @@
+version: 2
+updates:
+  # npm / pnpm (TypeScript / Next.js)
+  - package-ecosystem: npm
+    directory: "/"
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 10
+    labels:
+      - dependencies
+      - javascript
+
+  # Go modules (bridge service)
+  - package-ecosystem: gomod
+    directory: "/services/bridge"
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 10
+    labels:
+      - dependencies
+      - go
+
+  # Rust / Cargo (face-bias-audit)
+  - package-ecosystem: cargo
+    directory: "/services/face-bias-audit"
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 10
+    labels:
+      - dependencies
+      - rust
+
+  # pip (face-biometric)
+  - package-ecosystem: pip
+    directory: "/services/face-biometric"
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 10
+    labels:
+      - dependencies
+      - python
+
+  # GitHub Actions
+  - package-ecosystem: github-actions
+    directory: "/"
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 10
+    labels:
+      - dependencies
+      - github-actions

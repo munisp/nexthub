@@ -51,11 +51,11 @@ thiserror       = "1"
 dotenvy         = "0.15"
 
 # HTTP client (for forwarding to Python service)
-reqwest         = { version = "0.12", features = ["json", "rustls-tls"], default-features = false }
+reqwest         = { version = "0.13", features = ["json", "rustls-tls"], default-features = false }
 
 [dev-dependencies]
 # Blocking HTTP client for integration smoke tests (reqwest blocking feature)
-reqwest         = { version = "0.12", features = ["json", "blocking", "rustls-tls"], default-features = false }
+reqwest         = { version = "0.13", features = ["json", "blocking", "rustls-tls"], default-features = false }
 
 [profile.release]
 opt-level       = 3

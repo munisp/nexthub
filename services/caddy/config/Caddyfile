@@ -81,6 +81,21 @@ http:// {
         respond "OK" 200
     }
 
+    # Keycloak forward_auth — validates Bearer tokens at the edge before
+    # forwarding to the upstream. Unauthenticated requests to protected paths
+    # receive a 401 redirect to the Keycloak login page.
+    @protected {
+        path /api/trpc/*
+        not path /api/trpc/auth.*
+        not path /api/trpc/keycloak.oidcCallback
+        not path /health
+    }
+    forward_auth @protected {$KEYCLOAK_UPSTREAM:http://keycloak:8080} {
+        uri /realms/{$KEYCLOAK_REALM:nexthub}/protocol/openid-connect/userinfo
+        header_up Authorization {http.request.header.Authorization}
+        copy_headers X-Forwarded-User X-Forwarded-Email X-Forwarded-Groups
+    }
+
     # tRPC API
     handle /api/trpc/* {
         reverse_proxy {$NEXTHUB_UPSTREAM:http://nexthub:3001} {
@@ -136,6 +151,19 @@ http:// {
     # Health probe bypass
     handle /health {
         respond "OK" 200
+    }
+
+    # Keycloak forward_auth for API gateway — APISIX also validates tokens
+    # via its openid-connect plugin, but Caddy provides a first-pass check
+    # to reject obviously invalid tokens before they reach APISIX.
+    @api_protected {
+        not path /health
+        not path /v1/partner/*
+    }
+    forward_auth @api_protected {$KEYCLOAK_UPSTREAM:http://keycloak:8080} {
+        uri /realms/{$KEYCLOAK_REALM:nexthub}/protocol/openid-connect/userinfo
+        header_up Authorization {http.request.header.Authorization}
+        copy_headers X-Forwarded-User X-Forwarded-Email
     }
 
     # All API traffic → APISIX

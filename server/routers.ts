@@ -42,6 +42,7 @@ import { nexthubLiquidityRouter } from "./routers/nexthubLiquidity";
 import { nexthubIdentityDirectoryRouter } from "./routers/nexthubIdentityDirectory";
 import { nexthubHsmRouter } from "./routers/nexthubHsm";
 import { nexthubArbitrationRouter } from "./routers/nexthubArbitration";
+import { keycloakRouter } from "./routers/keycloak";
 
 // ─── App Router ───────────────────────────────────────────────────────────────
 export const appRouter = router({
@@ -91,6 +92,8 @@ export const appRouter = router({
   nexthubIdentityDirectory: nexthubIdentityDirectoryRouter,
   nexthubHsm:               nexthubHsmRouter,
   nexthubArbitration:       nexthubArbitrationRouter,
+  // Keycloak OIDC: auth, user management, realm provisioning
+  keycloak:                  keycloakRouter,
 });
 
 export type AppRouter = typeof appRouter;

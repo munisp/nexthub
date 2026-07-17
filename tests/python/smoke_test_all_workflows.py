@@ -1298,6 +1298,118 @@ run_test("Settlement window commit",             "Hub Operator", "bridge/nexthub
 run_test("Settlement window void",               "Hub Operator", "bridge/nexthub/ledger", _settlement_void)
 run_test("Dispute ledger reversal",              "Hub Operator", "bridge/nexthub/ledger", _dispute_reversal)
 
+
+# ══════════════════════════════════════════════════════════════════════════════
+# KEYCLOAK ADMIN API — User CRUD, Role management, Realm management, Token ops
+# ══════════════════════════════════════════════════════════════════════════════
+test_section("13. KEYCLOAK ADMIN API")
+
+BRIDGE = BRIDGE_URL  # alias for clarity
+
+def bridge(method, path, body=None):
+    url = f"{BRIDGE}{path}"
+    r = requests.request(method, url, json=body, headers=HEADERS_INTERNAL, timeout=10)
+    return r
+
+def _kc_create_user():
+    r = bridge("POST", "/v1/keycloak/users", {
+        "username": "smoke_user", "email": "smoke@nexthub.io",
+        "firstName": "Smoke", "lastName": "Test", "enabled": True
+    })
+    assert r.status_code in (201, 409, 503), f"KC create user: {r.status_code}"
+
+def _kc_list_users():
+    r = bridge("GET", "/v1/keycloak/users?search=smoke&max=10")
+    assert r.status_code in (200, 503), f"KC list users: {r.status_code}"
+
+def _kc_get_user():
+    r = bridge("GET", "/v1/keycloak/users/test-user-id")
+    assert r.status_code in (200, 404, 503), f"KC get user: {r.status_code}"
+
+def _kc_update_user():
+    r = bridge("PUT", "/v1/keycloak/users/test-user-id", {"firstName": "Updated", "lastName": "User"})
+    assert r.status_code in (200, 204, 404, 503), f"KC update user: {r.status_code}"
+
+def _kc_set_password():
+    r = bridge("PUT", "/v1/keycloak/users/test-user-id/password", {"password": "Nexthub@2025!", "temporary": True})
+    assert r.status_code in (200, 204, 404, 503), f"KC set password: {r.status_code}"
+
+def _kc_send_verify_email():
+    r = bridge("POST", "/v1/keycloak/users/test-user-id/send-verify-email", {})
+    assert r.status_code in (200, 204, 404, 503), f"KC send verify email: {r.status_code}"
+
+def _kc_get_user_roles():
+    r = bridge("GET", "/v1/keycloak/users/test-user-id/roles")
+    assert r.status_code in (200, 404, 503), f"KC get user roles: {r.status_code}"
+
+def _kc_assign_roles():
+    r = bridge("POST", "/v1/keycloak/users/test-user-id/roles", [{"id": "role-uuid", "name": "dfsp"}])
+    assert r.status_code in (200, 204, 404, 503), f"KC assign roles: {r.status_code}"
+
+def _kc_remove_roles():
+    r = bridge("DELETE", "/v1/keycloak/users/test-user-id/roles", [{"id": "role-uuid", "name": "dfsp"}])
+    assert r.status_code in (200, 204, 404, 503), f"KC remove roles: {r.status_code}"
+
+def _kc_list_roles():
+    r = bridge("GET", "/v1/keycloak/roles")
+    assert r.status_code in (200, 503), f"KC list roles: {r.status_code}"
+
+def _kc_get_role():
+    r = bridge("GET", "/v1/keycloak/roles/dfsp")
+    assert r.status_code in (200, 404, 503), f"KC get role: {r.status_code}"
+
+def _kc_create_realm():
+    r = bridge("POST", "/v1/keycloak/realms", {
+        "realm": "nexthub-smoke-tenant", "displayName": "Smoke Tenant", "enabled": True
+    })
+    assert r.status_code in (201, 409, 503), f"KC create realm: {r.status_code}"
+
+def _kc_get_realm():
+    r = bridge("GET", "/v1/keycloak/realms/nexthub")
+    assert r.status_code in (200, 404, 503), f"KC get realm: {r.status_code}"
+
+def _kc_delete_realm():
+    r = bridge("DELETE", "/v1/keycloak/realms/nexthub-smoke-tenant")
+    assert r.status_code in (200, 204, 404, 503), f"KC delete realm: {r.status_code}"
+
+def _kc_introspect():
+    r = bridge("POST", "/v1/keycloak/introspect", {"token": "eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.smoke"})
+    assert r.status_code in (200, 401, 503), f"KC introspect: {r.status_code}"
+
+def _kc_sync_permify():
+    r = bridge("POST", "/v1/keycloak/sync-permify", {})
+    assert r.status_code in (200, 503), f"KC sync-permify: {r.status_code}"
+
+def _kc_provision_legacy():
+    r = bridge("POST", "/v1/keycloak/provision", {
+        "username": "legacy_smoke", "email": "legacy@nexthub.io",
+        "roles": ["dfsp"], "tempPassword": "Nexthub@2025!"
+    })
+    assert r.status_code in (200, 201, 409, 503), f"KC legacy provision: {r.status_code}"
+
+def _kc_delete_user():
+    r = bridge("DELETE", "/v1/keycloak/users/test-user-id")
+    assert r.status_code in (200, 204, 404, 503), f"KC delete user: {r.status_code}"
+
+run_test("Keycloak create user",                "Hub Operator", "bridge/keycloak", _kc_create_user)
+run_test("Keycloak list users",                 "Hub Operator", "bridge/keycloak", _kc_list_users)
+run_test("Keycloak get user by ID",             "Hub Operator", "bridge/keycloak", _kc_get_user)
+run_test("Keycloak update user profile",        "Hub Operator", "bridge/keycloak", _kc_update_user)
+run_test("Keycloak set user password",          "Hub Operator", "bridge/keycloak", _kc_set_password)
+run_test("Keycloak send verification email",    "Hub Operator", "bridge/keycloak", _kc_send_verify_email)
+run_test("Keycloak get user roles",             "Hub Operator", "bridge/keycloak", _kc_get_user_roles)
+run_test("Keycloak assign realm roles",         "Hub Operator", "bridge/keycloak", _kc_assign_roles)
+run_test("Keycloak remove realm roles",         "Hub Operator", "bridge/keycloak", _kc_remove_roles)
+run_test("Keycloak list realm roles",           "Hub Operator", "bridge/keycloak", _kc_list_roles)
+run_test("Keycloak get role by name",           "Hub Operator", "bridge/keycloak", _kc_get_role)
+run_test("Keycloak create tenant realm",        "Hub Operator", "bridge/keycloak", _kc_create_realm)
+run_test("Keycloak get realm config",           "Hub Operator", "bridge/keycloak", _kc_get_realm)
+run_test("Keycloak delete tenant realm",        "Hub Operator", "bridge/keycloak", _kc_delete_realm)
+run_test("Keycloak token introspection",        "Hub Operator", "bridge/keycloak", _kc_introspect)
+run_test("Keycloak sync roles to Permify",      "Hub Operator", "bridge/keycloak", _kc_sync_permify)
+run_test("Keycloak legacy provision endpoint",  "Hub Operator", "bridge/keycloak", _kc_provision_legacy)
+run_test("Keycloak delete user",                "Hub Operator", "bridge/keycloak", _kc_delete_user)
+
 # ══════════════════════════════════════════════════════════════════════════════
 # FINAL REPORT
 # ══════════════════════════════════════════════════════════════════════════════

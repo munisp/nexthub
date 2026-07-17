@@ -53,13 +53,38 @@ function getJwks() {
 
 // ─── Authorization URL ───────────────────────────────────────────────────────
 
-export function buildAuthorizationUrl(redirectUri: string, state: string): string {
+// ─── PKCE helpers ────────────────────────────────────────────────────────────
+
+import crypto from "crypto";
+
+export function generatePkceVerifier(): string {
+  return crypto.randomBytes(32).toString("base64url");
+}
+
+export async function generatePkceChallenge(verifier: string): Promise<string> {
+  const hash = crypto.createHash("sha256").update(verifier).digest();
+  return hash.toString("base64url");
+}
+
+export function generateState(): string {
+  return crypto.randomBytes(16).toString("hex");
+}
+
+export function buildAuthorizationUrl(
+  redirectUri: string,
+  state: string,
+  codeChallenge?: string
+): string {
   const url = new URL(getAuthorizationEndpoint());
   url.searchParams.set("client_id", ENV.keycloakClientId);
   url.searchParams.set("redirect_uri", redirectUri);
   url.searchParams.set("response_type", "code");
-  url.searchParams.set("scope", "openid profile email");
+  url.searchParams.set("scope", "openid profile email roles");
   url.searchParams.set("state", state);
+  if (codeChallenge) {
+    url.searchParams.set("code_challenge", codeChallenge);
+    url.searchParams.set("code_challenge_method", "S256");
+  }
   return url.toString();
 }
 
@@ -74,15 +99,18 @@ export interface KeycloakTokenSet {
 
 export async function exchangeCodeForTokens(
   code: string,
-  redirectUri: string
+  redirectUri: string,
+  codeVerifier?: string
 ): Promise<KeycloakTokenSet> {
-  const body = new URLSearchParams({
+  const params: Record<string, string> = {
     grant_type: "authorization_code",
     client_id: ENV.keycloakClientId,
     client_secret: ENV.keycloakClientSecret,
     code,
     redirect_uri: redirectUri,
-  });
+  };
+  if (codeVerifier) params.code_verifier = codeVerifier;
+  const body = new URLSearchParams(params);
 
   const res = await fetch(getTokenEndpoint(), {
     method: "POST",
@@ -106,6 +134,17 @@ export async function exchangeCodeForTokens(
 
 // ─── JWT verification ─────────────────────────────────────────────────────────
 
+// All NextHub stakeholder roles as defined in the nexthub Keycloak realm
+export type NextHubRole =
+  | "nexthub-admin"
+  | "hub-operator"
+  | "dfsp-admin"
+  | "dfsp-user"
+  | "compliance-officer"
+  | "partner"
+  | "citizen"
+  | "auditor";
+
 export interface KeycloakClaims {
   sub: string;           // Keycloak user UUID — used as openId
   email?: string;
@@ -113,26 +152,63 @@ export interface KeycloakClaims {
   preferred_username?: string;
   realm_access?: { roles: string[] };
   resource_access?: Record<string, { roles: string[] }>;
+  // Tenant context — populated by the nexthub-bridge client mapper
+  tenant_id?: string;
+  tenant_slug?: string;
 }
 
-export async function verifyAccessToken(accessToken: string): Promise<KeycloakClaims> {
+export async function verifyAccessToken(
+  accessToken: string,
+  options?: { skipAudienceCheck?: boolean }
+): Promise<KeycloakClaims> {
   const jwks = getJwks();
-  const { payload } = await jwtVerify(accessToken, jwks, {
+  const verifyOptions: Parameters<typeof jwtVerify>[2] = {
     issuer: getKeycloakBaseUrl(),
-    audience: ENV.keycloakClientId,
-  });
+  };
+  if (!options?.skipAudienceCheck) {
+    verifyOptions.audience = ENV.keycloakClientId;
+  }
+  const { payload } = await jwtVerify(accessToken, jwks, verifyOptions);
   return payload as unknown as KeycloakClaims;
 }
 
 /**
- * Extract the PayGate role from Keycloak realm roles.
- * Keycloak realm roles "paygate-admin" → "admin", anything else → "user".
+ * Extract all Keycloak realm roles for the user.
+ * Returns the full list so callers can check any role.
  */
-export function extractRole(claims: KeycloakClaims): "admin" | "user" {
+export function extractAllRoles(claims: KeycloakClaims): string[] {
   const realmRoles = claims.realm_access?.roles ?? [];
   const clientRoles = claims.resource_access?.[ENV.keycloakClientId]?.roles ?? [];
-  const allRoles = [...realmRoles, ...clientRoles];
-  return allRoles.includes("paygate-admin") || allRoles.includes("admin") ? "admin" : "user";
+  return [...new Set([...realmRoles, ...clientRoles])];
+}
+
+/**
+ * Check if the claims include a specific NextHub role.
+ */
+export function hasRole(claims: KeycloakClaims, role: NextHubRole | string): boolean {
+  return extractAllRoles(claims).includes(role);
+}
+
+/**
+ * Check if the claims include ANY of the specified roles.
+ */
+export function hasAnyRole(claims: KeycloakClaims, roles: (NextHubRole | string)[]): boolean {
+  const userRoles = extractAllRoles(claims);
+  return roles.some(r => userRoles.includes(r));
+}
+
+/**
+ * Map Keycloak realm roles to the DB user_role enum ("admin" | "user").
+ * nexthub-admin and hub-operator map to "admin"; all others map to "user".
+ */
+export function extractRole(claims: KeycloakClaims): "admin" | "user" {
+  const allRoles = extractAllRoles(claims);
+  const adminRoles: string[] = [
+    "nexthub-admin", "hub-operator",
+    // Legacy PayGate roles
+    "paygate-admin", "admin",
+  ];
+  return adminRoles.some(r => allRoles.includes(r)) ? "admin" : "user";
 }
 
 // ─── End-session URL builder ─────────────────────────────────────────────────

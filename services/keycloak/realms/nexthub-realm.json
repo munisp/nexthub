@@ -1,0 +1,285 @@
+{
+  "realm": "nexthub",
+  "displayName": "NextHub",
+  "displayNameHtml": "<strong>NextHub</strong> Identity",
+  "enabled": true,
+  "sslRequired": "external",
+  "registrationAllowed": false,
+  "loginWithEmailAllowed": true,
+  "duplicateEmailsAllowed": false,
+  "resetPasswordAllowed": true,
+  "editUsernameAllowed": false,
+  "bruteForceProtected": true,
+  "permanentLockout": false,
+  "maxFailureWaitSeconds": 900,
+  "minimumQuickLoginWaitSeconds": 60,
+  "waitIncrementSeconds": 60,
+  "quickLoginCheckMilliSeconds": 1000,
+  "maxDeltaTimeSeconds": 43200,
+  "failureFactor": 5,
+  "accessTokenLifespan": 300,
+  "accessTokenLifespanForImplicitFlow": 900,
+  "ssoSessionIdleTimeout": 1800,
+  "ssoSessionMaxLifespan": 36000,
+  "offlineSessionIdleTimeout": 2592000,
+  "offlineSessionMaxLifespanEnabled": false,
+  "accessCodeLifespan": 60,
+  "accessCodeLifespanUserAction": 300,
+  "accessCodeLifespanLogin": 1800,
+  "actionTokenGeneratedByAdminLifespan": 43200,
+  "actionTokenGeneratedByUserLifespan": 300,
+  "defaultSignatureAlgorithm": "RS256",
+  "revokeRefreshToken": false,
+  "refreshTokenMaxReuse": 0,
+  "internationalizationEnabled": false,
+  "supportedLocales": ["en"],
+  "defaultLocale": "en",
+  "roles": {
+    "realm": [
+      {
+        "name": "nexthub-admin",
+        "description": "Full platform administrator — can manage tenants, users, and all system config",
+        "composite": false,
+        "clientRole": false
+      },
+      {
+        "name": "hub-operator",
+        "description": "Hub operator — manages settlement, liquidity, and inter-DFSP operations",
+        "composite": false,
+        "clientRole": false
+      },
+      {
+        "name": "dfsp-admin",
+        "description": "DFSP administrator — manages their own DFSP accounts and participants",
+        "composite": false,
+        "clientRole": false
+      },
+      {
+        "name": "dfsp-user",
+        "description": "DFSP standard user — initiates transfers and views reports",
+        "composite": false,
+        "clientRole": false
+      },
+      {
+        "name": "compliance-officer",
+        "description": "Compliance officer — reads bias audit, fidelity audit, and KYC reports",
+        "composite": false,
+        "clientRole": false
+      },
+      {
+        "name": "partner",
+        "description": "External partner — accesses face biometric APIs via API key",
+        "composite": false,
+        "clientRole": false
+      },
+      {
+        "name": "citizen",
+        "description": "End citizen — performs identity verification and enrollment",
+        "composite": false,
+        "clientRole": false
+      },
+      {
+        "name": "auditor",
+        "description": "Read-only auditor — views all reports and logs",
+        "composite": false,
+        "clientRole": false
+      }
+    ]
+  },
+  "groups": [
+    {
+      "name": "nexthub-admins",
+      "realmRoles": ["nexthub-admin"]
+    },
+    {
+      "name": "hub-operators",
+      "realmRoles": ["hub-operator"]
+    },
+    {
+      "name": "dfsp-admins",
+      "realmRoles": ["dfsp-admin"]
+    },
+    {
+      "name": "compliance-officers",
+      "realmRoles": ["compliance-officer"]
+    }
+  ],
+  "clients": [
+    {
+      "clientId": "nexthub-portal",
+      "name": "NextHub Portal",
+      "description": "Main NextHub web portal (OIDC Authorization Code + PKCE)",
+      "enabled": true,
+      "publicClient": false,
+      "standardFlowEnabled": true,
+      "implicitFlowEnabled": false,
+      "directAccessGrantsEnabled": false,
+      "serviceAccountsEnabled": false,
+      "authorizationServicesEnabled": false,
+      "redirectUris": [
+        "http://localhost:3001/*",
+        "https://portal.paygate.ng/*",
+        "https://${NEXTHUB_PORTAL_DOMAIN:portal.paygate.ng}/*"
+      ],
+      "webOrigins": [
+        "http://localhost:3001",
+        "https://portal.paygate.ng"
+      ],
+      "protocol": "openid-connect",
+      "attributes": {
+        "pkce.code.challenge.method": "S256",
+        "access.token.lifespan": "300",
+        "client.session.idle.timeout": "1800"
+      },
+      "defaultClientScopes": ["openid", "profile", "email", "roles"],
+      "optionalClientScopes": ["address", "phone", "offline_access"]
+    },
+    {
+      "clientId": "nexthub-bridge",
+      "name": "NextHub Go Bridge",
+      "description": "Service account for the Go Bridge — token introspection and Admin API",
+      "enabled": true,
+      "publicClient": false,
+      "standardFlowEnabled": false,
+      "implicitFlowEnabled": false,
+      "directAccessGrantsEnabled": false,
+      "serviceAccountsEnabled": true,
+      "authorizationServicesEnabled": false,
+      "protocol": "openid-connect",
+      "attributes": {
+        "access.token.lifespan": "60"
+      },
+      "defaultClientScopes": ["openid", "roles"]
+    },
+    {
+      "clientId": "nexthub-face-biometric",
+      "name": "NextHub Face Biometric Service",
+      "description": "Service account for the Python face-biometric sidecar",
+      "enabled": true,
+      "publicClient": false,
+      "standardFlowEnabled": false,
+      "implicitFlowEnabled": false,
+      "directAccessGrantsEnabled": false,
+      "serviceAccountsEnabled": true,
+      "authorizationServicesEnabled": false,
+      "protocol": "openid-connect",
+      "attributes": {
+        "access.token.lifespan": "60"
+      },
+      "defaultClientScopes": ["openid", "roles"]
+    },
+    {
+      "clientId": "nexthub-caddy",
+      "name": "NextHub Caddy Edge Proxy",
+      "description": "Service account for Caddy forward-auth token validation",
+      "enabled": true,
+      "publicClient": false,
+      "standardFlowEnabled": false,
+      "implicitFlowEnabled": false,
+      "directAccessGrantsEnabled": false,
+      "serviceAccountsEnabled": true,
+      "authorizationServicesEnabled": false,
+      "protocol": "openid-connect",
+      "attributes": {
+        "access.token.lifespan": "60"
+      },
+      "defaultClientScopes": ["openid", "roles"]
+    }
+  ],
+  "clientScopes": [
+    {
+      "name": "roles",
+      "description": "OpenID Connect scope for realm and client roles",
+      "protocol": "openid-connect",
+      "attributes": {
+        "include.in.token.scope": "true",
+        "display.on.consent.screen": "true"
+      },
+      "protocolMappers": [
+        {
+          "name": "realm roles",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-usermodel-realm-role-mapper",
+          "consentRequired": false,
+          "config": {
+            "multivalued": "true",
+            "userinfo.token.claim": "true",
+            "id.token.claim": "true",
+            "access.token.claim": "true",
+            "claim.name": "realm_access.roles",
+            "jsonType.label": "String"
+          }
+        },
+        {
+          "name": "audience resolve",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-audience-resolve-mapper",
+          "consentRequired": false,
+          "config": {}
+        }
+      ]
+    }
+  ],
+  "defaultDefaultClientScopes": ["openid", "profile", "email", "roles"],
+  "defaultOptionalClientScopes": ["address", "phone", "offline_access"],
+  "browserSecurityHeaders": {
+    "contentSecurityPolicyReportOnly": "",
+    "xContentTypeOptions": "nosniff",
+    "xRobotsTag": "none",
+    "xFrameOptions": "SAMEORIGIN",
+    "contentSecurityPolicy": "frame-src 'self'; frame-ancestors 'self'; object-src 'none';",
+    "xXSSProtection": "1; mode=block",
+    "strictTransportSecurity": "max-age=31536000; includeSubDomains"
+  },
+  "smtpServer": {},
+  "eventsEnabled": true,
+  "eventsExpiration": 900,
+  "adminEventsEnabled": true,
+  "adminEventsDetailsEnabled": true,
+  "enabledEventTypes": [
+    "LOGIN", "LOGIN_ERROR", "LOGOUT", "REGISTER", "REGISTER_ERROR",
+    "TOKEN_EXCHANGE", "INTROSPECT_TOKEN", "FEDERATED_IDENTITY_LINK",
+    "UPDATE_EMAIL", "UPDATE_PASSWORD", "UPDATE_PROFILE",
+    "UPDATE_TOTP", "REMOVE_TOTP",
+    "SEND_RESET_PASSWORD", "SEND_VERIFY_EMAIL", "VERIFY_EMAIL",
+    "RESET_PASSWORD", "RESET_PASSWORD_ERROR",
+    "CLIENT_LOGIN", "CLIENT_LOGIN_ERROR",
+    "CODE_TO_TOKEN", "CODE_TO_TOKEN_ERROR",
+    "REFRESH_TOKEN", "REFRESH_TOKEN_ERROR",
+    "REVOKE_GRANT", "REVOKE_GRANT_ERROR"
+  ],
+  "identityProviders": [],
+  "identityProviderMappers": [],
+  "components": {
+    "org.keycloak.services.clientregistration.policy.ClientRegistrationPolicy": [
+      {
+        "name": "Allowed Client Scopes",
+        "providerId": "allowed-client-templates",
+        "subType": "anonymous",
+        "config": {
+          "allow-default-scopes": ["true"]
+        }
+      }
+    ]
+  },
+  "userManagedAccessAllowed": false,
+  "users": [
+    {
+      "username": "nexthub-admin",
+      "email": "admin@nexthub.io",
+      "emailVerified": true,
+      "enabled": true,
+      "firstName": "NextHub",
+      "lastName": "Admin",
+      "credentials": [
+        {
+          "type": "password",
+          "value": "${NEXTHUB_ADMIN_INITIAL_PASSWORD:-ChangeMe123!}",
+          "temporary": true
+        }
+      ],
+      "realmRoles": ["nexthub-admin", "hub-operator"],
+      "groups": ["nexthub-admins"]
+    }
+  ]
+}

@@ -29,7 +29,7 @@ scipy==1.13.1
 qdrant-client==1.9.1
 
 # ── Name Matching ─────────────────────────────────────────────────────────────
-jellyfish==1.0.3
+jellyfish==1.2.1
 
 # ── Async Infrastructure ──────────────────────────────────────────────────────
 redis[asyncio]==5.0.6

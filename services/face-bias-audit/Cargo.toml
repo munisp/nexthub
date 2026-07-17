@@ -14,7 +14,7 @@ path = "tests/smoke_test.rs"
 
 [dependencies]
 # Web framework
-axum            = { version = "0.7",  features = ["json", "macros"] }
+axum            = { version = "0.8",  features = ["json", "macros"] }
 tokio           = { version = "1",    features = ["full"] }
 tower           = { version = "0.4" }
 tower-http      = { version = "0.7",  features = ["cors", "trace"] }

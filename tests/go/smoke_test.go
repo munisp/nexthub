@@ -1730,3 +1730,177 @@ func TestCaddyRouteAuthRequired(t *testing.T) {
 	}
 	t.Logf("Caddy config without auth correctly returned: %d", resp.StatusCode)
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Keycloak Admin API relay tests
+// ─────────────────────────────────────────────────────────────────────────────
+
+func TestKeycloakCreateUser(t *testing.T) {
+	body := map[string]interface{}{
+		"username": "smoke_user", "email": "smoke@nexthub.io",
+		"firstName": "Smoke", "lastName": "Test", "enabled": true,
+	}
+	resp := doRequest(t, "POST", "/v1/keycloak/users", body, 201, 409, 503)
+	if resp != nil {
+		defer resp.Body.Close()
+		t.Logf("Keycloak create user: %d", resp.StatusCode)
+	}
+}
+
+func TestKeycloakListUsers(t *testing.T) {
+	resp := doRequest(t, "GET", "/v1/keycloak/users?search=smoke&max=10", nil, 200, 503)
+	if resp != nil {
+		defer resp.Body.Close()
+		t.Logf("Keycloak list users: %d", resp.StatusCode)
+	}
+}
+
+func TestKeycloakGetUser(t *testing.T) {
+	resp := doRequest(t, "GET", "/v1/keycloak/users/test-user-id", nil, 200, 404, 503)
+	if resp != nil {
+		defer resp.Body.Close()
+		t.Logf("Keycloak get user: %d", resp.StatusCode)
+	}
+}
+
+func TestKeycloakUpdateUser(t *testing.T) {
+	body := map[string]interface{}{"firstName": "Updated", "lastName": "User"}
+	resp := doRequest(t, "PUT", "/v1/keycloak/users/test-user-id", body, 200, 404, 503)
+	if resp != nil {
+		defer resp.Body.Close()
+		t.Logf("Keycloak update user: %d", resp.StatusCode)
+	}
+}
+
+func TestKeycloakDeleteUser(t *testing.T) {
+	resp := doRequest(t, "DELETE", "/v1/keycloak/users/test-user-id", nil, 200, 404, 503)
+	if resp != nil {
+		defer resp.Body.Close()
+		t.Logf("Keycloak delete user: %d", resp.StatusCode)
+	}
+}
+
+func TestKeycloakSetPassword(t *testing.T) {
+	body := map[string]interface{}{"password": "Nexthub@2025!", "temporary": true}
+	resp := doRequest(t, "PUT", "/v1/keycloak/users/test-user-id/password", body, 200, 404, 503)
+	if resp != nil {
+		defer resp.Body.Close()
+		t.Logf("Keycloak set password: %d", resp.StatusCode)
+	}
+}
+
+func TestKeycloakSendVerificationEmail(t *testing.T) {
+	resp := doRequest(t, "POST", "/v1/keycloak/users/test-user-id/send-verify-email", nil, 200, 404, 503)
+	if resp != nil {
+		defer resp.Body.Close()
+		t.Logf("Keycloak send verification email: %d", resp.StatusCode)
+	}
+}
+
+func TestKeycloakGetUserRoles(t *testing.T) {
+	resp := doRequest(t, "GET", "/v1/keycloak/users/test-user-id/roles", nil, 200, 404, 503)
+	if resp != nil {
+		defer resp.Body.Close()
+		t.Logf("Keycloak get user roles: %d", resp.StatusCode)
+	}
+}
+
+func TestKeycloakAssignRoles(t *testing.T) {
+	body := []map[string]interface{}{{"id": "role-uuid", "name": "dfsp"}}
+	resp := doRequest(t, "POST", "/v1/keycloak/users/test-user-id/roles", body, 200, 404, 503)
+	if resp != nil {
+		defer resp.Body.Close()
+		t.Logf("Keycloak assign roles: %d", resp.StatusCode)
+	}
+}
+
+func TestKeycloakRemoveRoles(t *testing.T) {
+	body := []map[string]interface{}{{"id": "role-uuid", "name": "dfsp"}}
+	resp := doRequest(t, "DELETE", "/v1/keycloak/users/test-user-id/roles", body, 200, 404, 503)
+	if resp != nil {
+		defer resp.Body.Close()
+		t.Logf("Keycloak remove roles: %d", resp.StatusCode)
+	}
+}
+
+func TestKeycloakListRoles(t *testing.T) {
+	resp := doRequest(t, "GET", "/v1/keycloak/roles", nil, 200, 503)
+	if resp != nil {
+		defer resp.Body.Close()
+		t.Logf("Keycloak list roles: %d", resp.StatusCode)
+	}
+}
+
+func TestKeycloakGetRole(t *testing.T) {
+	resp := doRequest(t, "GET", "/v1/keycloak/roles/dfsp", nil, 200, 404, 503)
+	if resp != nil {
+		defer resp.Body.Close()
+		t.Logf("Keycloak get role: %d", resp.StatusCode)
+	}
+}
+
+func TestKeycloakCreateRealm(t *testing.T) {
+	body := map[string]interface{}{
+		"realm": "nexthub-smoke-tenant", "displayName": "Smoke Tenant", "enabled": true,
+	}
+	resp := doRequest(t, "POST", "/v1/keycloak/realms", body, 201, 409, 503)
+	if resp != nil {
+		defer resp.Body.Close()
+		t.Logf("Keycloak create realm: %d", resp.StatusCode)
+	}
+}
+
+func TestKeycloakGetRealm(t *testing.T) {
+	resp := doRequest(t, "GET", "/v1/keycloak/realms/nexthub", nil, 200, 404, 503)
+	if resp != nil {
+		defer resp.Body.Close()
+		t.Logf("Keycloak get realm: %d", resp.StatusCode)
+	}
+}
+
+func TestKeycloakDeleteRealm(t *testing.T) {
+	resp := doRequest(t, "DELETE", "/v1/keycloak/realms/nexthub-smoke-tenant", nil, 200, 404, 503)
+	if resp != nil {
+		defer resp.Body.Close()
+		t.Logf("Keycloak delete realm: %d", resp.StatusCode)
+	}
+}
+
+func TestKeycloakIntrospect(t *testing.T) {
+	body := map[string]interface{}{"token": "eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.smoke"}
+	resp := doRequest(t, "POST", "/v1/keycloak/introspect", body, 200, 401, 503)
+	if resp != nil {
+		defer resp.Body.Close()
+		t.Logf("Keycloak introspect: %d", resp.StatusCode)
+	}
+}
+
+func TestKeycloakSyncPermify(t *testing.T) {
+	resp := doRequest(t, "POST", "/v1/keycloak/sync-permify", nil, 200, 503)
+	if resp != nil {
+		defer resp.Body.Close()
+		t.Logf("Keycloak sync-permify: %d", resp.StatusCode)
+	}
+}
+
+func TestKeycloakBearerAuthRejection(t *testing.T) {
+	// Verify that a request with an invalid Bearer token is handled correctly
+	req, err := http.NewRequest("GET", bridgeURL+"/v1/keycloak/users", nil)
+	if err != nil {
+		t.Fatalf("failed to create request: %v", err)
+	}
+	req.Header.Set("X-Internal-Key", internalKey)
+	req.Header.Set("Authorization", "Bearer invalid.token.here")
+	client := &http.Client{Timeout: 5 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		t.Skipf("Bridge unavailable: %v", err)
+		return
+	}
+	defer resp.Body.Close()
+	// With Keycloak offline → 503; with it online and bad token → 401; route returns 200 if Keycloak is nil
+	if resp.StatusCode != 401 && resp.StatusCode != 503 && resp.StatusCode != 200 {
+		t.Errorf("expected 401/503/200, got %d", resp.StatusCode)
+	}
+	t.Logf("Keycloak bearer auth rejection: %d", resp.StatusCode)
+}

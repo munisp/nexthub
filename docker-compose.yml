@@ -178,20 +178,26 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
-    command: start-dev
+    # --import-realm auto-imports JSON files from /opt/keycloak/data/import
+    command: start-dev --import-realm
     environment:
       KC_DB: postgres
       KC_DB_URL: jdbc:postgresql://postgres:5432/nexthub_db
       KC_DB_USERNAME: user
       KC_DB_PASSWORD: pass
-      KEYCLOAK_ADMIN: admin
-      KEYCLOAK_ADMIN_PASSWORD: admin
+      KEYCLOAK_ADMIN: ${KEYCLOAK_ADMIN:-admin}
+      KEYCLOAK_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD:-admin}
       # Required for Caddy reverse-proxy — Keycloak must know its public URL
       KC_HOSTNAME: ${NEXTHUB_AUTH_DOMAIN:-auth.paygate.ng}
       KC_HOSTNAME_STRICT: 'false'
       KC_PROXY: edge
+      KC_HEALTH_ENABLED: 'true'
+      KC_METRICS_ENABLED: 'true'
+      KC_LOG_LEVEL: INFO
     volumes:
     - keycloak_data:/opt/keycloak/data
+    # Mount realm JSON for --import-realm auto-import on first start
+    - ./services/keycloak/realms:/opt/keycloak/data/import:ro
     ports:
     - 8180:8080
     healthcheck:
@@ -201,6 +207,29 @@ services:
       interval: 20s
       timeout: 10s
       retries: 10
+
+  # One-shot init container — sets client secrets and service-account roles
+  # after Keycloak is healthy. Runs once and exits.
+  keycloak-init:
+    image: python:3.12-alpine
+    restart: 'no'
+    networks:
+    - nexthub
+    depends_on:
+      keycloak:
+        condition: service_healthy
+    volumes:
+    - ./services/keycloak:/scripts:ro
+    environment:
+      KEYCLOAK_URL: http://keycloak:8080
+      KEYCLOAK_ADMIN: ${KEYCLOAK_ADMIN:-admin}
+      KEYCLOAK_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD:-admin}
+      KEYCLOAK_REALM: ${KEYCLOAK_REALM:-nexthub}
+      BRIDGE_CLIENT_SECRET: ${BRIDGE_CLIENT_SECRET:-nexthub-bridge-secret}
+      FACE_CLIENT_SECRET: ${FACE_CLIENT_SECRET:-nexthub-face-secret}
+      CADDY_CLIENT_SECRET: ${CADDY_CLIENT_SECRET:-nexthub-caddy-secret}
+      PORTAL_CLIENT_SECRET: ${PORTAL_CLIENT_SECRET:-nexthub-portal-secret}
+    entrypoint: ["/bin/sh", "/scripts/init-keycloak.sh"]
 
   permify:
     image: ghcr.io/permify/permify:v0.9.6

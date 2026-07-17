@@ -225,8 +225,31 @@ func main() {
 		// OpenAppSec WAF
 		infra.PUT("/openappsec/policies",           h.UpsertOpenappsecPolicy)
 		infra.GET("/openappsec/alerts",             h.GetOpenappsecAlerts)
-		// Keycloak
-		infra.POST("/keycloak/provision",           h.KeycloakProvisionUser)
+		// Keycloak — User CRUD, Role management, Realm management, Token introspection
+		// (legacy provision endpoint kept for backward compatibility)
+		infra.POST("/keycloak/provision",                   h.KeycloakProvisionUser)
+		// Users
+		infra.POST("/keycloak/users",                       h.HandleKeycloakCreateUser)
+		infra.GET("/keycloak/users",                        h.HandleKeycloakListUsers)
+		infra.GET("/keycloak/users/:id",                    h.HandleKeycloakGetUser)
+		infra.PUT("/keycloak/users/:id",                    h.HandleKeycloakUpdateUser)
+		infra.DELETE("/keycloak/users/:id",                 h.HandleKeycloakDeleteUser)
+		infra.PUT("/keycloak/users/:id/password",           h.HandleKeycloakSetPassword)
+		infra.POST("/keycloak/users/:id/send-verify-email", h.HandleKeycloakSendVerificationEmail)
+		// User roles
+		infra.GET("/keycloak/users/:id/roles",              h.HandleKeycloakGetUserRoles)
+		infra.POST("/keycloak/users/:id/roles",             h.HandleKeycloakAssignRoles)
+		infra.DELETE("/keycloak/users/:id/roles",           h.HandleKeycloakRemoveRoles)
+		// Realm roles
+		infra.GET("/keycloak/roles",                        h.HandleKeycloakListRoles)
+		infra.GET("/keycloak/roles/:name",                  h.HandleKeycloakGetRole)
+		// Realm management (tenant provisioning)
+		infra.POST("/keycloak/realms",                      h.HandleKeycloakCreateRealm)
+		infra.GET("/keycloak/realms/:realm",                h.HandleKeycloakGetRealm)
+		infra.DELETE("/keycloak/realms/:realm",             h.HandleKeycloakDeleteRealm)
+		// Token introspection & Permify sync
+		infra.POST("/keycloak/introspect",                  h.HandleKeycloakIntrospect)
+		infra.POST("/keycloak/sync-permify",                h.HandleKeycloakSyncPermify)
 		// MOSIP IDA eKYC + eSignet OIDC4VP/OIDC4VCI
 		infra.POST("/mosip/otp",                    h.GenerateOTP)
 		infra.POST("/mosip/ekyc",                   h.SubmitEKYC)

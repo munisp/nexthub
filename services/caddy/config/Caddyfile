@@ -1,0 +1,250 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# NextHub Caddy Edge Proxy — Caddyfile
+#
+# Architecture:
+#   Internet → Caddy (TLS/HTTP3) → OpenAppSec (WAF) → APISIX (routing)
+#                                                    → Keycloak (auth/OIDC)
+#
+# Environment variables consumed (set in docker-compose.yml / .env):
+#   NEXTHUB_DOMAIN        — primary domain, e.g. hub.paygate.ng
+#   NEXTHUB_API_DOMAIN    — API subdomain, e.g. api.paygate.ng
+#   NEXTHUB_GRPC_DOMAIN   — gRPC subdomain, e.g. grpc.paygate.ng
+#   NEXTHUB_AUTH_DOMAIN   — auth subdomain, e.g. auth.paygate.ng
+#   APISIX_UPSTREAM       — internal APISIX address, e.g. http://apisix:9080
+#   KEYCLOAK_UPSTREAM     — internal Keycloak address, e.g. http://keycloak:8080
+#   NEXTHUB_UPSTREAM      — internal NextHub Node.js, e.g. http://nexthub:3001
+#   CADDY_ACME_EMAIL      — ACME registration email
+#   OPENAPPSEC_SOCKET     — path to OpenAppSec Unix socket (default /run/appsec.sock)
+#   TLS_MODE              — "acme" (production) | "internal" (dev self-signed)
+# ─────────────────────────────────────────────────────────────────────────────
+
+{
+    # Global options
+    admin 0.0.0.0:2019
+
+    # Email for ACME (Let's Encrypt / ZeroSSL) certificate registration
+    email {$CADDY_ACME_EMAIL:ops@nexthub.io}
+
+    # Enable HTTP/3 (QUIC) globally
+    servers {
+        protocols h1 h2 h3
+        trusted_proxies static private_ranges
+    }
+
+    # OpenAppSec WAF attachment — all requests pass through the nano-agent
+    # before being forwarded to the upstream. The agent communicates via
+    # the local Unix socket written by cp-nano-agent at startup.
+    order openappsec before reverse_proxy
+
+    # Logging
+    log {
+        output stdout
+        format json
+        level INFO
+    }
+}
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Redirect HTTP → HTTPS
+# ─────────────────────────────────────────────────────────────────────────────
+http:// {
+    redir https://{host}{uri} permanent
+}
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Hub Portal  (hub.paygate.ng  →  NextHub Node.js :3001)
+# ─────────────────────────────────────────────────────────────────────────────
+{$NEXTHUB_DOMAIN:hub.paygate.ng} {
+
+    tls {$CADDY_ACME_EMAIL:ops@nexthub.io} {
+        protocols tls1.2 tls1.3
+    }
+
+    # OpenAppSec WAF — inspect all requests
+    openappsec {
+        socket {$OPENAPPSEC_SOCKET:/run/appsec.sock}
+        mode    prevent
+    }
+
+    # Security headers
+    header {
+        Strict-Transport-Security "max-age=63072000; includeSubDomains; preload"
+        X-Content-Type-Options    "nosniff"
+        X-Frame-Options           "SAMEORIGIN"
+        Referrer-Policy           "strict-origin-when-cross-origin"
+        Permissions-Policy        "geolocation=(), microphone=(), camera=()"
+        -Server
+    }
+
+    # Health check endpoint (bypasses WAF for load balancer probes)
+    handle /health {
+        respond "OK" 200
+    }
+
+    # tRPC API
+    handle /api/trpc/* {
+        reverse_proxy {$NEXTHUB_UPSTREAM:http://nexthub:3001} {
+            header_up X-Forwarded-Proto https
+            header_up X-Real-IP {remote_host}
+        }
+    }
+
+    # Keycloak OIDC callback and auth endpoints
+    handle /auth/* {
+        reverse_proxy {$KEYCLOAK_UPSTREAM:http://keycloak:8080} {
+            header_up X-Forwarded-Proto https
+            header_up X-Real-IP {remote_host}
+        }
+    }
+
+    # All other portal traffic → NextHub Node.js
+    handle {
+        reverse_proxy {$NEXTHUB_UPSTREAM:http://nexthub:3001} {
+            header_up X-Forwarded-Proto https
+            header_up X-Real-IP {remote_host}
+            lb_policy round_robin
+            health_uri /api/trpc
+            health_interval 10s
+            health_timeout  5s
+        }
+    }
+}
+
+# ─────────────────────────────────────────────────────────────────────────────
+# API Gateway  (api.paygate.ng  →  APISIX :9080)
+# All REST/JSON API traffic enters through APISIX for dynamic routing,
+# rate limiting, and Keycloak JWT validation via the openid-connect plugin.
+# ─────────────────────────────────────────────────────────────────────────────
+{$NEXTHUB_API_DOMAIN:api.paygate.ng} {
+
+    tls {$CADDY_ACME_EMAIL:ops@nexthub.io} {
+        protocols tls1.2 tls1.3
+    }
+
+    openappsec {
+        socket {$OPENAPPSEC_SOCKET:/run/appsec.sock}
+        mode    prevent
+    }
+
+    header {
+        Strict-Transport-Security "max-age=63072000; includeSubDomains; preload"
+        X-Content-Type-Options    "nosniff"
+        X-Frame-Options           "DENY"
+        -Server
+    }
+
+    # Health probe bypass
+    handle /health {
+        respond "OK" 200
+    }
+
+    # All API traffic → APISIX
+    handle {
+        reverse_proxy {$APISIX_UPSTREAM:http://apisix:9080} {
+            header_up X-Forwarded-Proto https
+            header_up X-Real-IP {remote_host}
+            header_up Host {host}
+            lb_policy round_robin
+            health_uri /apisix/status
+            health_interval 10s
+            health_timeout  5s
+            fail_duration   30s
+        }
+    }
+}
+
+# ─────────────────────────────────────────────────────────────────────────────
+# gRPC Gateway  (grpc.paygate.ng  →  NextHub gRPC :50051)
+# Uses HTTP/2 transport for gRPC. The L4 module handles raw TCP passthrough
+# for gRPC streams that don't need WAF inspection (e.g., internal ledger calls).
+# ─────────────────────────────────────────────────────────────────────────────
+{$NEXTHUB_GRPC_DOMAIN:grpc.paygate.ng} {
+
+    tls {$CADDY_ACME_EMAIL:ops@nexthub.io} {
+        protocols tls1.2 tls1.3
+    }
+
+    openappsec {
+        socket {$OPENAPPSEC_SOCKET:/run/appsec.sock}
+        mode    detect
+    }
+
+    header {
+        Strict-Transport-Security "max-age=63072000; includeSubDomains; preload"
+        -Server
+    }
+
+    # gRPC reverse proxy — preserves HTTP/2 trailers
+    reverse_proxy h2c://{$NEXTHUB_GRPC_UPSTREAM:nexthub:50051} {
+        header_up X-Forwarded-Proto https
+        transport http {
+            versions h2c
+        }
+    }
+}
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Keycloak Auth Server  (auth.paygate.ng  →  Keycloak :8080)
+# Dedicated subdomain for Keycloak so OIDC redirect URIs are stable.
+# ─────────────────────────────────────────────────────────────────────────────
+{$NEXTHUB_AUTH_DOMAIN:auth.paygate.ng} {
+
+    tls {$CADDY_ACME_EMAIL:ops@nexthub.io} {
+        protocols tls1.2 tls1.3
+    }
+
+    # WAF in detect mode on auth endpoints — prevent blocks legitimate OIDC flows
+    openappsec {
+        socket {$OPENAPPSEC_SOCKET:/run/appsec.sock}
+        mode    detect
+    }
+
+    header {
+        Strict-Transport-Security "max-age=63072000; includeSubDomains; preload"
+        X-Content-Type-Options    "nosniff"
+        X-Frame-Options           "SAMEORIGIN"
+        -Server
+    }
+
+    reverse_proxy {$KEYCLOAK_UPSTREAM:http://keycloak:8080} {
+        header_up X-Forwarded-Proto https
+        header_up X-Forwarded-Host  {host}
+        header_up X-Real-IP         {remote_host}
+        # Keycloak needs the real host to build correct redirect URIs
+        header_up Host              {host}
+    }
+}
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Local / Development fallback  (localhost)
+# Uses Caddy's built-in self-signed certificate for local dev.
+# ─────────────────────────────────────────────────────────────────────────────
+localhost {
+
+    tls internal
+
+    openappsec {
+        socket {$OPENAPPSEC_SOCKET:/run/appsec.sock}
+        mode    detect
+    }
+
+    handle /health {
+        respond "OK" 200
+    }
+
+    handle /api/trpc/* {
+        reverse_proxy {$NEXTHUB_UPSTREAM:http://nexthub:3001}
+    }
+
+    handle /auth/* {
+        reverse_proxy {$KEYCLOAK_UPSTREAM:http://keycloak:8080}
+    }
+
+    handle /v1/* {
+        reverse_proxy {$APISIX_UPSTREAM:http://apisix:9080}
+    }
+
+    handle {
+        reverse_proxy {$NEXTHUB_UPSTREAM:http://nexthub:3001}
+    }
+}

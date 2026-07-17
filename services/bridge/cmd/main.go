@@ -367,7 +367,20 @@ partner.POST("/face/video-verify",           h.HandleVideoVerify)
 		infra2.POST("/temporal/workflows",                      h.TemporalStartWorkflow)
 		infra2.GET("/temporal/workflows/:workflowId",           h.TemporalGetWorkflowStatus)
 		infra2.POST("/temporal/workflows/:workflowId/signal",   h.TemporalSignalWorkflow)
-		infra2.POST("/temporal/workflows/:workflowId/cancel",   h.TemporalCancelWorkflow)
+				infra2.POST("/temporal/workflows/:workflowId/cancel",   h.TemporalCancelWorkflow)
+	}
+
+	// ── Caddy Admin API relay ─────────────────────────────────────────────────
+	// Allows the NextHub portal to manage the Caddy edge proxy at runtime:
+	// tenant route provisioning, upstream updates, and TLS certificate policies.
+	{
+		caddyGroup := r.Group("/v1/caddy", bMiddleware.InternalKeyAuth(cfg.InternalKey))
+		caddyGroup.GET("/health",             h.PingCaddy)
+		caddyGroup.GET("/config",             h.GetCaddyConfig)
+		caddyGroup.PUT("/routes",             h.UpsertCaddyRoute)
+		caddyGroup.DELETE("/routes/:routeId", h.DeleteCaddyRoute)
+		caddyGroup.PUT("/upstreams",          h.UpdateCaddyUpstream)
+		caddyGroup.POST("/tls/policies",      h.AddCaddyTLSPolicy)
 	}
 
 	// ── HTTP server ───────────────────────────────────────────────────────────

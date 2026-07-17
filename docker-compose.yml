@@ -1,50 +1,33 @@
 version: '3.9'
+
+# ─────────────────────────────────────────────────────────────────────────────
+# NextHub Platform — Docker Compose
+#
+# Edge request flow:
+#   Internet → Caddy (TLS/HTTP3/ACME) → OpenAppSec (WAF) → APISIX (routing)
+#            → Keycloak (OIDC/JWT)    → NextHub / Bridge / Face Biometric
+# ─────────────────────────────────────────────────────────────────────────────
+
 networks:
   nexthub:
     driver: bridge
-  face-bias-audit:
-    build:
-      context: ./services/face-bias-audit
-      dockerfile: Dockerfile
-    container_name: nexthub-face-bias-audit
-    restart: unless-stopped
-    ports:
-    - 8230:8230
-    environment:
-      DATABASE_URL: ${DATABASE_URL}
-      REDIS_URL: redis://redis:6379
-      KAFKA_BROKERS: kafka:9092
-      BIAS_KAFKA_TOPIC: nexthub.face.bias.event.v1
-      BIAS_AUDIT_PORT: '8230'
-      FAR_ALERT_THRESHOLD: '0.10'
-      BIAS_WINDOW_SECS: '3600'
-      RUST_LOG: face_bias_audit=info
-    depends_on:
-    - postgres
-    - redis
-    - kafka
-    networks:
-    - nexthub-network
-    healthcheck:
-      test:
-      - CMD
-      - curl
-      - -sf
-      - http://localhost:8230/health
-      interval: 30s
-      timeout: 5s
-      retries: 3
-      start_period: 20s
+
 volumes:
-  postgres_data: null
-  redis_data: null
-  temporal_data: null
-  kafka_data: null
-  keycloak_data: null
-  tigerbeetle_data: null
-  face_biometric_models: null
-  qdrant_data: null
+  postgres_data:
+  redis_data:
+  temporal_data:
+  kafka_data:
+  keycloak_data:
+  tigerbeetle_data:
+  face_biometric_models:
+  qdrant_data:
+  caddy_data:
+  caddy_config:
+
 services:
+
+  # ── Infrastructure ──────────────────────────────────────────────────────────
+
   postgres:
     image: postgres:16-alpine
     restart: unless-stopped
@@ -65,6 +48,7 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
+
   redis:
     image: redis:7-alpine
     restart: unless-stopped
@@ -82,6 +66,7 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
+
   zookeeper:
     image: confluentinc/cp-zookeeper:7.6.0
     restart: unless-stopped
@@ -99,6 +84,7 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
+
   kafka:
     image: confluentinc/cp-kafka:7.6.0
     restart: unless-stopped
@@ -128,6 +114,7 @@ services:
       interval: 15s
       timeout: 10s
       retries: 5
+
   temporal:
     image: temporalio/auto-setup:1.24.2
     restart: unless-stopped
@@ -157,6 +144,7 @@ services:
       interval: 15s
       timeout: 10s
       retries: 10
+
   temporal-ui:
     image: temporalio/ui:2.26.2
     restart: unless-stopped
@@ -168,7 +156,7 @@ services:
       TEMPORAL_ADDRESS: temporal:7233
       TEMPORAL_CORS_ORIGINS: http://localhost:3001
     ports:
-    - 8080:8080
+    - 8088:8080
     healthcheck:
       test:
       - CMD
@@ -179,6 +167,9 @@ services:
       timeout: 10s
       retries: 3
       start_period: 30s
+
+  # ── Identity & Auth ─────────────────────────────────────────────────────────
+
   keycloak:
     image: quay.io/keycloak/keycloak:24.0
     restart: unless-stopped
@@ -195,6 +186,10 @@ services:
       KC_DB_PASSWORD: pass
       KEYCLOAK_ADMIN: admin
       KEYCLOAK_ADMIN_PASSWORD: admin
+      # Required for Caddy reverse-proxy — Keycloak must know its public URL
+      KC_HOSTNAME: ${NEXTHUB_AUTH_DOMAIN:-auth.paygate.ng}
+      KC_HOSTNAME_STRICT: 'false'
+      KC_PROXY: edge
     volumes:
     - keycloak_data:/opt/keycloak/data
     ports:
@@ -206,6 +201,7 @@ services:
       interval: 20s
       timeout: 10s
       retries: 10
+
   permify:
     image: ghcr.io/permify/permify:v0.9.6
     restart: unless-stopped
@@ -233,6 +229,9 @@ services:
       timeout: 5s
       retries: 5
       start_period: 15s
+
+  # ── Core Services ───────────────────────────────────────────────────────────
+
   ledger:
     build:
       context: ./services/ledger
@@ -254,6 +253,7 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
+
   bridge:
     build:
       context: ./services/bridge
@@ -285,9 +285,12 @@ services:
       LEDGER_URL: http://ledger:8090
       INTERNAL_API_KEY: ${NEXTHUB_INTEGRATION_API_KEY:-dev-integration-key}
       FACE_BIOMETRIC_URL: http://face-biometric:8220
+      BIAS_AUDIT_SERVICE_URL: http://face-bias-audit:8230
       FACE_VERIFY_THRESHOLD: '0.40'
       FACE_LIVENESS_THRESHOLD: '0.60'
       FACE_QUALITY_MIN_SCORE: '0.50'
+      # Caddy Admin API — bridge can reload Caddy config dynamically
+      CADDY_ADMIN_URL: http://caddy:2019
     ports:
     - 8081:8081
     healthcheck:
@@ -297,6 +300,7 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
+
   lakehouse:
     build:
       context: ./services/lakehouse
@@ -319,11 +323,76 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
+
+  qdrant:
+    image: qdrant/qdrant:v1.9.0
+    container_name: nexthub-qdrant
+    restart: unless-stopped
+    networks:
+    - nexthub
+    ports:
+    - 6333:6333
+    - 6334:6334
+    volumes:
+    - qdrant_data:/qdrant/storage
+    environment:
+      QDRANT__SERVICE__HTTP_PORT: 6333
+      QDRANT__SERVICE__GRPC_PORT: 6334
+    healthcheck:
+      test:
+      - CMD
+      - curl
+      - -f
+      - http://localhost:6333/healthz
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  face-bias-audit:
+    build:
+      context: ./services/face-bias-audit
+      dockerfile: Dockerfile
+    container_name: nexthub-face-bias-audit
+    restart: unless-stopped
+    networks:
+    - nexthub
+    ports:
+    - 8230:8230
+    environment:
+      DATABASE_URL: postgresql://user:pass@postgres:5432/nexthub_db
+      REDIS_URL: redis://redis:6379
+      KAFKA_BROKERS: kafka:9092
+      BIAS_KAFKA_TOPIC: nexthub.face.bias.event.v1
+      BIAS_AUDIT_PORT: '8230'
+      FAR_ALERT_THRESHOLD: '0.10'
+      BIAS_WINDOW_SECS: '3600'
+      RUST_LOG: face_bias_audit=info
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+    healthcheck:
+      test:
+      - CMD
+      - curl
+      - -sf
+      - http://localhost:8230/health
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+
   face-biometric:
     build:
       context: ./services/face-biometric
       dockerfile: Dockerfile
     restart: unless-stopped
+    networks:
+    - nexthub
     ports:
     - 8220:8220
     environment:
@@ -348,8 +417,6 @@ services:
         condition: service_healthy
       face-bias-audit:
         condition: service_healthy
-    networks:
-    - nexthub
     healthcheck:
       test:
       - CMD
@@ -360,6 +427,7 @@ services:
       timeout: 10s
       retries: 5
       start_period: 60s
+
   nexthub:
     build:
       context: .
@@ -387,6 +455,10 @@ services:
       LAKEHOUSE_URL: http://lakehouse:8082
       REDIS_URL: redis://redis:6379
       FACE_BIOMETRIC_URL: http://face-biometric:8220
+      KEYCLOAK_URL: http://keycloak:8080
+      KEYCLOAK_REALM: nexthub
+      KEYCLOAK_CLIENT_ID: nexthub-portal
+      KEYCLOAK_CLIENT_SECRET: ${KEYCLOAK_CLIENT_SECRET:-}
     ports:
     - 3001:3001
     - 50051:50051
@@ -397,57 +469,51 @@ services:
       interval: 15s
       timeout: 10s
       retries: 5
-  qdrant:
-    image: qdrant/qdrant:v1.9.0
-    container_name: nexthub-qdrant
-    restart: unless-stopped
-    ports:
-    - 6333:6333
-    - 6334:6334
-    volumes:
-    - qdrant_data:/qdrant/storage
-    environment:
-      QDRANT__SERVICE__HTTP_PORT: 6333
-      QDRANT__SERVICE__GRPC_PORT: 6334
-    healthcheck:
-      test:
-      - CMD
-      - curl
-      - -f
-      - http://localhost:6333/healthz
-      interval: 15s
-      timeout: 5s
-      retries: 5
-      start_period: 10s
-    networks:
-    - nexthub-net
-  face-bias-audit:
+
+  # ── Edge Proxy ──────────────────────────────────────────────────────────────
+  # Caddy is the outermost entry point for all internet traffic.
+  # It handles TLS termination (ACME/Let's Encrypt), HTTP/3 (QUIC),
+  # OpenAppSec WAF attachment, and reverse-proxies to APISIX and Keycloak.
+  caddy:
     build:
-      context: ./services/face-bias-audit
+      context: ./services/caddy
       dockerfile: Dockerfile
-    container_name: nexthub-face-bias-audit
+    container_name: nexthub-caddy
     restart: unless-stopped
-    ports:
-    - 8230:8230
-    environment:
-      DATABASE_URL: postgresql://nexthub:password@postgres:5432/nexthub_db
-      REDIS_URL: redis://redis:6379
-      RUST_LOG: info
-      PORT: '8230'
+    networks:
+    - nexthub
     depends_on:
-      postgres:
+      nexthub:
         condition: service_healthy
-      redis:
+      keycloak:
         condition: service_healthy
+    ports:
+    - '80:80'
+    - '443:443'
+    - '443:443/udp'
+    - '2019:2019'
+    environment:
+      CADDY_ACME_EMAIL: ${CADDY_ACME_EMAIL:-ops@nexthub.io}
+      NEXTHUB_DOMAIN: ${NEXTHUB_DOMAIN:-hub.paygate.ng}
+      NEXTHUB_API_DOMAIN: ${NEXTHUB_API_DOMAIN:-api.paygate.ng}
+      NEXTHUB_GRPC_DOMAIN: ${NEXTHUB_GRPC_DOMAIN:-grpc.paygate.ng}
+      NEXTHUB_AUTH_DOMAIN: ${NEXTHUB_AUTH_DOMAIN:-auth.paygate.ng}
+      NEXTHUB_UPSTREAM: http://nexthub:3001
+      APISIX_UPSTREAM: http://apisix:9080
+      KEYCLOAK_UPSTREAM: http://keycloak:8080
+      NEXTHUB_GRPC_UPSTREAM: nexthub:50051
+      OPENAPPSEC_SOCKET: /run/appsec.sock
+      APPSEC_LOG_LEVEL: ${APPSEC_LOG_LEVEL:-info}
+    volumes:
+    - caddy_data:/data/caddy
+    - caddy_config:/config/caddy
     healthcheck:
       test:
       - CMD
       - curl
-      - -f
-      - http://localhost:8230/health
+      - -sf
+      - http://localhost:2019/config/
       interval: 15s
       timeout: 5s
       retries: 5
-      start_period: 20s
-    networks:
-    - nexthub-net
+      start_period: 30s

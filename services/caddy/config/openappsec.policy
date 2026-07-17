@@ -1,0 +1,66 @@
+{
+  "policies": [
+    {
+      "name": "nexthub-default-policy",
+      "mode": "prevent-learn",
+      "assets": [
+        "hub.paygate.ng",
+        "api.paygate.ng",
+        "grpc.paygate.ng",
+        "auth.paygate.ng",
+        "localhost"
+      ],
+      "practices": [
+        {
+          "name": "nexthub-web-attacks",
+          "type": "WebAttacks",
+          "mode": "prevent",
+          "minimumConfidence": "high",
+          "protections": {
+            "sqlInjection":   { "enabled": true,  "sensitivity": "high" },
+            "xss":            { "enabled": true,  "sensitivity": "high" },
+            "remoteFileInclude": { "enabled": true },
+            "commandInjection":  { "enabled": true },
+            "pathTraversal":     { "enabled": true }
+          }
+        },
+        {
+          "name": "nexthub-bot-protection",
+          "type": "BotProtection",
+          "mode": "prevent",
+          "protections": {
+            "knownBots":   { "enabled": true },
+            "suspiciousBot": { "enabled": true }
+          }
+        },
+        {
+          "name": "nexthub-intrusion-detection",
+          "type": "IntrusionPrevention",
+          "mode": "prevent"
+        }
+      ],
+      "exceptions": [
+        {
+          "comment": "Allow APISIX health check probes",
+          "url": "/apisix/status",
+          "action": "allow"
+        },
+        {
+          "comment": "Allow Caddy health check",
+          "url": "/health",
+          "action": "allow"
+        },
+        {
+          "comment": "Allow Keycloak JWKS endpoint (high-volume JWT validation)",
+          "url": "/realms/*/protocol/openid-connect/certs",
+          "action": "allow"
+        }
+      ],
+      "triggerLog": {
+        "verbosity": "extended",
+        "logToAgent": true,
+        "logFormat": "json"
+      }
+    }
+  ]
+}

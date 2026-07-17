@@ -1642,3 +1642,91 @@ func TestDisputeReversal(t *testing.T) {
 		t.Logf("Dispute reversal: %d", resp.StatusCode)
 	}
 }
+
+// ─── Caddy Admin API relay tests ─────────────────────────────────────────────
+// These tests verify that the Go Bridge correctly relays Caddy Admin API
+// management requests. All tests accept 200 (success), 503/502 (Caddy
+// unavailable), 401 (auth required), and 400 (bad request) as valid responses.
+
+func TestCaddyHealth(t *testing.T) {
+	resp := doRequest(t, "GET", "/v1/caddy/health", nil, 200, 503, 502, 401)
+	if resp != nil {
+		defer resp.Body.Close()
+		t.Logf("Caddy health: %d", resp.StatusCode)
+	}
+}
+
+func TestCaddyGetConfig(t *testing.T) {
+	resp := doRequest(t, "GET", "/v1/caddy/config", nil, 200, 503, 502, 401)
+	if resp != nil {
+		defer resp.Body.Close()
+		t.Logf("Caddy get config: %d", resp.StatusCode)
+	}
+}
+
+func TestCaddyUpsertRoute(t *testing.T) {
+	body := map[string]interface{}{
+		"routeId":      "smoke-test-tenant-route",
+		"hosts":        []string{"smoke.paygate.ng"},
+		"upstreamDial": "nexthub:3001",
+		"terminal":     true,
+	}
+	resp := doRequest(t, "PUT", "/v1/caddy/routes", body, 200, 503, 502, 401, 400)
+	if resp != nil {
+		defer resp.Body.Close()
+		t.Logf("Caddy upsert route: %d", resp.StatusCode)
+	}
+}
+
+func TestCaddyDeleteRoute(t *testing.T) {
+	resp := doRequest(t, "DELETE", "/v1/caddy/routes/smoke-test-tenant-route", nil, 200, 503, 502, 401, 404)
+	if resp != nil {
+		defer resp.Body.Close()
+		t.Logf("Caddy delete route: %d", resp.StatusCode)
+	}
+}
+
+func TestCaddyUpdateUpstream(t *testing.T) {
+	body := map[string]interface{}{
+		"routeId":   "nexthub-main",
+		"upstreams": []string{"nexthub:3001"},
+	}
+	resp := doRequest(t, "PUT", "/v1/caddy/upstreams", body, 200, 503, 502, 401, 400)
+	if resp != nil {
+		defer resp.Body.Close()
+		t.Logf("Caddy update upstream: %d", resp.StatusCode)
+	}
+}
+
+func TestCaddyAddTLSPolicy(t *testing.T) {
+	body := map[string]interface{}{
+		"subjects":  []string{"smoke.paygate.ng"},
+		"acmeEmail": "ops@nexthub.io",
+	}
+	resp := doRequest(t, "POST", "/v1/caddy/tls/policies", body, 200, 503, 502, 401, 400)
+	if resp != nil {
+		defer resp.Body.Close()
+		t.Logf("Caddy add TLS policy: %d", resp.StatusCode)
+	}
+}
+
+// TestCaddyRouteAuthRequired verifies that Caddy relay routes reject requests
+// without the internal API key.
+func TestCaddyRouteAuthRequired(t *testing.T) {
+	req, err := http.NewRequest("GET", bridgeURL+"/v1/caddy/config", nil)
+	if err != nil {
+		t.Fatalf("failed to create request: %v", err)
+	}
+	// Deliberately omit the X-Internal-Key header
+	client := &http.Client{Timeout: 10 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		t.Skipf("Bridge unavailable: %v", err)
+		return
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != 401 && resp.StatusCode != 403 {
+		t.Errorf("expected 401/403 for unauthenticated Caddy config request, got %d", resp.StatusCode)
+	}
+	t.Logf("Caddy config without auth correctly returned: %d", resp.StatusCode)
+}

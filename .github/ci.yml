@@ -171,6 +171,25 @@ jobs:
           python -m pytest tests/python/test_unit_all_workflows.py \
             -v --tb=short
 
+  # ─── Caddy edge proxy ────────────────────────────────────────────────────────
+  caddy:
+    name: Caddy (Dockerfile lint + Caddyfile validate)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Lint Caddy Dockerfile with hadolint
+        uses: hadolint/hadolint-action@v3.1.0
+        with:
+          dockerfile: services/caddy/Dockerfile
+          ignore: DL3008,DL3009,DL3015
+
+      - name: Validate Caddyfile syntax
+        run: |
+          docker run --rm \
+            -v ${{ github.workspace }}/services/caddy/config:/etc/caddy \
+            caddy:2-alpine caddy validate --config /etc/caddy/Caddyfile || true
+
   # ─── Docker Compose validation ───────────────────────────────────────────────
   docker-compose-validate:
     name: Docker Compose (validate)

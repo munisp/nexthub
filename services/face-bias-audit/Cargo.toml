@@ -37,7 +37,7 @@ uuid            = { version = "1",    features = ["v4", "serde"] }
 chrono          = { version = "0.4",  features = ["serde"] }
 
 # Metrics
-prometheus      = { version = "0.13", features = ["process"] }
+prometheus      = { version = "0.14", features = ["process"] }
 
 # Logging
 tracing         = "0.1"

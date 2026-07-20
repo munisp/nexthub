@@ -9,7 +9,7 @@ python-multipart==0.0.32
 insightface==1.0.1
 # GPU: onnxruntime-gpu replaces onnxruntime when NVIDIA GPU is available.
 # The Dockerfile selects the correct package via build arg USE_GPU.
-onnxruntime==1.18.1
+onnxruntime==1.27.0
 opencv-python-headless==4.10.0.84
 numpy==1.26.4
 Pillow==12.3.0

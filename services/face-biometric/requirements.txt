@@ -10,7 +10,7 @@ insightface==1.0.1
 # GPU: onnxruntime-gpu replaces onnxruntime when NVIDIA GPU is available.
 # The Dockerfile selects the correct package via build arg USE_GPU.
 onnxruntime==1.18.1
-opencv-python-headless==4.10.0.84
+opencv-python-headless==5.0.0.93
 numpy==1.26.4
 Pillow==12.3.0
 

@@ -19,7 +19,7 @@ mediapipe==0.10.35
 
 # ── AI/ML — Face Attributes + Emotion (DeepFace) ─────────────────────────────
 deepface==0.0.100
-tf-keras==2.16.0
+tf-keras==2.21.0
 
 # ── AI/ML — Image Processing ─────────────────────────────────────────────────
 scikit-image==0.23.2
